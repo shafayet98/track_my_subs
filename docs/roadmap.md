@@ -38,7 +38,7 @@ fix anything the verification surfaces.
 
 **Done when:** `uv run pytest` is green and `uv run ruff check` passes.
 
-## Phase 3 — Gmail integration ⬜
+## Phase 3 — Gmail integration ✅
 
 **Skill:** `gmail-sync`. **Deliverables:** Google OAuth connect + callback;
 encrypted refresh-token storage; `integrations/gmail.py` with the heuristic
@@ -48,7 +48,7 @@ wired to real flow.
 **Done when:** a user can connect a Gmail account; candidate search + single-email
 fetch work against fixtures in tests (no live network in CI).
 
-## Phase 4 — The agent ⬜
+## Phase 4 — The agent 🔜
 
 **Skill:** `agent-tooling`. **Deliverables:** `agent/tools.py` (schemas +
 tenant-scoped executors), `agent/prompts.py` (stable system prompt),
