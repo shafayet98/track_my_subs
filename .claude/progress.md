@@ -17,6 +17,40 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — The agent (feat/agent)
+
+**What:** Implemented Phase 4 — the agentic scan. New `agent/` package:
+`prompts.py` (stable, cacheable system prompt), `tools.py` (`TOOL_SCHEMAS` in
+deterministic order + a `ScanContext` and tenant-scoped executors for
+`list_candidate_emails`, `get_email`, `upsert_subscription`, `record_payment`,
+`flag_missing_payment`, `finish_scan`), and `loop.py` (`run_agent_loop` — the
+manual loop checking `stop_reason`, preserving full assistant `content`, one
+`tool_result` per `tool_use`, `MAX_ITERATIONS=25`; plus `run_scan_job`, the
+background orchestration: decrypt token → Gmail candidate search → loop → update
+`scan_run` + `last_synced_at`). Added `integrations/anthropic_client.py`
+(`AsyncAnthropic` wrapper). Wired `POST /api/scans` to create a `scan_run` and
+schedule the job (202; 400 without a connected Gmail account). LLM call uses
+`claude-opus-4-8` + `thinking={"type":"adaptive"}` + `max_tokens=16000`, no
+sampling params (per `.claude/rules/llm-usage.md`). Write executors filter on
+`user_id` and reject cross-tenant `subscription_id`; payments dedup on
+`source_message_id`; no email bodies persisted. Tests (Anthropic + Gmail faked,
+no network): `test_agent_tools.py` (upsert/update, payment dedup, tenant
+rejection, bad-date, get_email counting, finish_scan), `test_agent_loop.py`
+(completes on finish/end_turn, refusal without raising, `MAX_ITERATIONS` cap,
+payment written + scoped), `test_scans.py` (202 + run created + job scheduled,
+400 without account, tenant-scoped GET). Plan: `docs/plans/The_agent.md`.
+**Why:** Phase 4 of the roadmap — the LLM brain that turns candidate emails into
+`subscriptions` + `payments`, the data Phase 5's dashboard aggregates.
+**Touches:** `backend/app/agent/**` (new), `backend/app/integrations/anthropic_client.py`
+(new), `backend/app/api/scans.py`, `backend/tests/test_agent_tools.py` +
+`test_agent_loop.py` + `test_scans.py` (new), `docs/plans/The_agent.md`.
+**Verified:** `uv run pytest` → 33 passed; `uv run ruff check` + `ruff format
+--check` clean; `alembic upgrade head` + `alembic check` drift-free (no schema
+change). No live LLM/Gmail network in tests.
+**Follow-ups:** Phase 5 — `services/dashboard.py` aggregation + real
+`/api/dashboard/summary` and subscription-detail endpoints. The scan runs as a
+FastAPI background task locally; AWS (Phase 7) moves it to a worker.
+
 ## 2026-06-13 — Gmail integration (feat/gmail-integration)
 
 **What:** Implemented Phase 3. New `integrations/gmail.py`: OAuth helpers

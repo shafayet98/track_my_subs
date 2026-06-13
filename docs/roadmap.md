@@ -48,7 +48,7 @@ wired to real flow.
 **Done when:** a user can connect a Gmail account; candidate search + single-email
 fetch work against fixtures in tests (no live network in CI).
 
-## Phase 4 — The agent 🔜
+## Phase 4 — The agent ✅
 
 **Skill:** `agent-tooling`. **Deliverables:** `agent/tools.py` (schemas +
 tenant-scoped executors), `agent/prompts.py` (stable system prompt),
@@ -60,7 +60,7 @@ background job; `GET /api/scans/{id}` reports status.
 correctly scoped to the user; the loop terminates on `end_turn`, on the iteration
 cap, and on a refusal; all LLM/Gmail boundaries mocked in tests.
 
-## Phase 5 — Dashboard aggregation ⬜
+## Phase 5 — Dashboard aggregation 🔜
 
 **Deliverables:** `services/dashboard.py` (monthly spend, this-vs-last-month,
 per-subscription totals/next-payment/overdue); `GET /api/dashboard/summary` and
