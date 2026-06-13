@@ -17,6 +17,23 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — Verify & harden auth: test suite (feat/verify-harden-auth)
+
+**What:** Added a committed `pytest` suite for the backend — fixtures
+(`tests/conftest.py`: ephemeral in-memory SQLite, ASGI `httpx.AsyncClient`,
+`get_db` override, `make_user` helper), `test_auth.py` (register/login/`me`,
+wrong-password 401, unknown-user 401, duplicate-email 409, short-password 422,
+auth guards), and `test_tenant_isolation.py` (user B cannot read user A's
+subscriptions/scans/accounts; A sees only its own). Introduced the plan-first
+rule (`.claude/rules/planning.md`) and the first plan doc
+(`docs/plans/Verify_harden_auth.md`).
+**Why:** Phase 2 of the roadmap — lock in the auth + tenant-isolation guarantees
+every later phase depends on, with a repeatable suite instead of ad-hoc checks.
+**Touches:** `backend/tests/**`, `docs/plans/Verify_harden_auth.md`,
+`.claude/rules/planning.md`, `CLAUDE.md`.
+**Verified:** `uv run pytest` → 8 passed; `uv run ruff check` clean.
+**Follow-ups:** Phase 3 — Gmail integration (needs Google OAuth credentials).
+
 ## 2026-06-13 — Backend skeleton (chore/scaffolding)
 
 **What:** FastAPI app with `/api/health`; core config/db/security (JWT, bcrypt,
