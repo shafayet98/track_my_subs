@@ -35,9 +35,7 @@ class SubscriptionOut(BaseModel):
 async def list_subscriptions(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> list[Subscription]:
-    rows = await db.scalars(
-        select(Subscription).where(Subscription.user_id == user.id)
-    )
+    rows = await db.scalars(select(Subscription).where(Subscription.user_id == user.id))
     return list(rows)
 
 
