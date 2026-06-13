@@ -17,6 +17,38 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — Dashboard aggregation (feat/dashboard-aggregation)
+
+**What:** Implemented Phase 5 — the read-side aggregation that turns the agent's
+`subscriptions` + `payments` into dashboard numbers. New `services/dashboard.py`
+(`get_summary`, `get_subscription_cards`, `get_subscription_detail`; tenant-scoped
+on `user_id`) and `schemas/dashboard.py` (`MonthlySpend`, `DashboardSummary`,
+`PaymentOut`, `SubscriptionCard`, `SubscriptionDetail`). Spend buckets are
+computed in Python (group by calendar month), not Postgres `date_trunc`, so the
+one codepath runs on SQLite (tests/CI) and Postgres; spend counts only
+`status='paid'`, `overdue_total` sums `overdue`, `missing_count` counts
+`missing`+`overdue`, `next_payment_*` comes from the subscription. Wired the API:
+`GET /api/dashboard/summary` now returns a 12-month series + this/last-month
+totals + active-subscription count (dropped the `501` stub); `GET /api/subscriptions`
+returns card aggregates; `GET /api/subscriptions/{id}` returns the drill-down
+(card aggregates + confidence + newest-first payment history). The list/detail
+endpoints fetch a user's payments once and group in memory (no N+1). Month math
+takes an injectable `today` for deterministic tests. Tests (`test_dashboard.py`):
+this/last-month buckets with unpaid excluded, empty state, card aggregates
+(total/last-month/overdue/missing/next-payment), detail endpoint shape + ordering,
+cross-tenant 404. Plan: `docs/plans/Dashboard_aggregation.md`.
+**Why:** Phase 5 of the roadmap — the data the Phase 6 frontend (spend chart +
+subscription cards + detail) renders.
+**Touches:** `backend/app/services/dashboard.py` + `__init__.py` (new),
+`backend/app/schemas/dashboard.py` (new), `backend/app/api/dashboard.py`,
+`backend/tests/test_dashboard.py` (new), `docs/plans/Dashboard_aggregation.md`.
+**Verified:** `uv run pytest` → 39 passed; `uv run ruff check` + `ruff format
+--check` clean; `alembic upgrade head` + `alembic check` drift-free on SQLite (no
+schema change this phase).
+**Follow-ups:** Phase 6 — the React frontend. Currency normalization across
+merchants stays deferred (we sum raw `amount` and surface a representative
+`currency`).
+
 ## 2026-06-13 — The agent (feat/agent)
 
 **What:** Implemented Phase 4 — the agentic scan. New `agent/` package:

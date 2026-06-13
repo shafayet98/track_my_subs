@@ -60,7 +60,7 @@ background job; `GET /api/scans/{id}` reports status.
 correctly scoped to the user; the loop terminates on `end_turn`, on the iteration
 cap, and on a refusal; all LLM/Gmail boundaries mocked in tests.
 
-## Phase 5 — Dashboard aggregation 🔜
+## Phase 5 — Dashboard aggregation ✅
 
 **Deliverables:** `services/dashboard.py` (monthly spend, this-vs-last-month,
 per-subscription totals/next-payment/overdue); `GET /api/dashboard/summary` and
