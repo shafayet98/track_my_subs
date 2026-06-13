@@ -4,19 +4,22 @@ Revision ID: 0001_initial
 Revises:
 Create Date: 2026-06-13
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
+from app.models.types import GUID as _GUID
 
 revision: str = "0001_initial"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# GUID columns are stored as CHAR(36) (see app.models.types.GUID).
-GUID = sa.String(36)
+# Use the same custom UUID type the models use (stored as CHAR(36)) so the
+# schema matches the ORM metadata and `alembic check` stays drift-free.
+GUID = _GUID()
 
 
 def _timestamps() -> list[sa.Column]:

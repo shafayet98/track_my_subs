@@ -13,6 +13,7 @@ from app.core.config import settings
 # bcrypt operates on at most 72 bytes; we truncate explicitly (the standard
 # practice) so longer passwords don't raise.
 
+
 def _pw_bytes(password: str) -> bytes:
     return password.encode("utf-8")[:72]
 
@@ -30,10 +31,9 @@ def verify_password(password: str, hashed: str) -> bool:
 
 # --- JWT -------------------------------------------------------------------
 
+
 def create_access_token(subject: str, expires_minutes: int | None = None) -> str:
-    expire = datetime.now(UTC) + timedelta(
-        minutes=expires_minutes or settings.jwt_expires_minutes
-    )
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes or settings.jwt_expires_minutes)
     payload: dict[str, Any] = {"sub": subject, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -41,15 +41,14 @@ def create_access_token(subject: str, expires_minutes: int | None = None) -> str
 def decode_access_token(token: str) -> str | None:
     """Return the subject (user id) if the token is valid, else None."""
     try:
-        payload = jwt.decode(
-            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return None
     return payload.get("sub")
 
 
 # --- OAuth-token encryption at rest ---------------------------------------
+
 
 def _fernet() -> Fernet:
     if not settings.token_encryption_key:

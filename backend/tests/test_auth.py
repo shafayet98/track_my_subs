@@ -25,17 +25,13 @@ async def test_register_duplicate_email_conflicts(client, make_user):
 
 
 async def test_register_rejects_short_password(client):
-    r = await client.post(
-        "/api/auth/register", json={"email": "x@b.com", "password": "short"}
-    )
+    r = await client.post("/api/auth/register", json={"email": "x@b.com", "password": "short"})
     assert r.status_code == 422  # pydantic min_length
 
 
 async def test_login_ok_and_wrong_password(client, make_user):
     await make_user("c@b.com", password="password123")
-    ok = await client.post(
-        "/api/auth/login", json={"email": "c@b.com", "password": "password123"}
-    )
+    ok = await client.post("/api/auth/login", json={"email": "c@b.com", "password": "password123"})
     assert ok.status_code == 200
     assert "access_token" in ok.json()
 

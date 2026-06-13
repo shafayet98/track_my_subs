@@ -17,6 +17,25 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — CI pipeline (chore/ci)
+
+**What:** Added `.github/workflows/ci.yml` — a hermetic backend job (uv install →
+`ruff check` → `ruff format --check` → `pytest` → `alembic upgrade head` +
+`alembic check`) on PRs and pushes to `main`. No secrets, SQLite only. Enabling
+the format check required normalizing existing files with `ruff format`; enabling
+the drift check required the initial migration to use the models' custom `GUID`
+type instead of `sa.String(36)` (so `alembic check` is drift-free). Plan:
+`docs/plans/CI_pipeline.md`.
+**Why:** Enforce the PR-per-phase workflow and raise the quality floor before the
+codebase grows (Gmail, agent, dashboard). Chose option A — SQLite now, add a
+Postgres CI job at Phase 5 when Postgres-specific SQL arrives.
+**Touches:** `.github/workflows/ci.yml`, `docs/plans/CI_pipeline.md`,
+`backend/alembic/versions/0001_initial.py`, formatting across `backend/**`.
+**Verified:** all four CI steps pass locally (ruff check/format, 8 tests, migrations
++ drift).
+**Follow-ups:** After merge, enable branch protection requiring the CI check on
+`main`. Phase 3 — Gmail integration.
+
 ## 2026-06-13 — Verify & harden auth: test suite (feat/verify-harden-auth)
 
 **What:** Added a committed `pytest` suite for the backend — fixtures
