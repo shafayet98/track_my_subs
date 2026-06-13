@@ -69,7 +69,7 @@ the subscription-detail endpoint return real data.
 **Done when:** endpoints return correct aggregates over seeded payments, verified
 by tests.
 
-## Phase 6 — Frontend ⬜
+## Phase 6 — Frontend ✅
 
 **Deliverables:** React + Vite + TS app; typed API client; pages —
 ConnectAccount (OAuth kickoff + "Scan now" + poll), Dashboard (Recharts spend

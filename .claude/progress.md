@@ -17,6 +17,35 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — Frontend (feat/frontend)
+
+**What:** Implemented Phase 6 — the React + Vite + TypeScript SPA. New `frontend/`
+project (Vite + React 18 + TS, `react-router-dom`, `recharts`, eslint). One typed
+API client (`src/api/client.ts` + `types.ts`) mirroring the backend schemas:
+attaches the JWT, throws `ApiError` on non-2xx, clears the token on 401; base URL
+from `VITE_API_BASE_URL` (default `http://localhost:8000/api`). Auth via
+`AuthContext` (JWT in `localStorage`, `/auth/me` on load) + a `RequireAuth` route
+guard. Pages: **LoginPage** (login/register toggle), **DashboardPage**
+(`/dashboard/summary` → this/last-month + active count + a 12-month Recharts bar
+chart; `/subscriptions` → card grid), **ConnectAccountPage** (lists accounts,
+"Connect Gmail" → redirect to the consent URL, "Scan now" → `POST /scans` then
+polls `GET /scans/{id}` every 2s until terminal, handles the `?gmail=connected`
+return), **SubscriptionDetailPage** (`/subscriptions/{id}` → totals, next payment,
+overdue/missing, payment-history table). Dumb presentational components
+(`SpendChart`, `SubscriptionCard`, `Layout`) + a `useFetch` hook + display
+helpers; minimal hand-rolled CSS (no UI framework). CI: added a `frontend` job
+(npm ci → eslint → tsc + vite build); committed `package-lock.json`, gitignored
+`*.tsbuildinfo`. Plan: `docs/plans/Frontend.md`.
+**Why:** Phase 6 of the roadmap — the UI that ties the whole flow together:
+connect Gmail → scan → dashboard charts + cards → subscription detail.
+**Touches:** `frontend/**` (new), `.github/workflows/ci.yml`, `.gitignore`,
+`docs/plans/Frontend.md`.
+**Verified:** `npm ci` + `npm run lint` (eslint clean) + `npm run build` (tsc +
+vite) all green locally, matching the new CI job; backend CI unchanged.
+**Follow-ups:** Phase 7 — AWS deployment (CDK). The bundle is one chunk (~550 kB,
+Recharts-heavy); code-splitting is a later optimization. No frontend test runner
+this phase — the typecheck + build is the gate.
+
 ## 2026-06-13 — Dashboard aggregation (feat/dashboard-aggregation)
 
 **What:** Implemented Phase 5 — the read-side aggregation that turns the agent's
