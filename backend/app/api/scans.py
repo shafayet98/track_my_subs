@@ -1,18 +1,21 @@
 """Scan endpoints.
 
-Starting a scan invokes the agent (added in a later PR). Listing/reading scan
-runs works against the DB now so the API shape is usable.
+Starting a scan creates a `scan_run` and runs the agent as a background job
+(see the agent-tooling skill). Reading a scan run reports its status.
 """
 
 import uuid
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.loop import run_scan_job
 from app.api.deps import get_current_user
 from app.core.db import get_db
-from app.models import ScanRun, User
+from app.models import EmailAccount, ScanRun, User
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -27,12 +30,31 @@ class ScanRunOut(BaseModel):
     summary: str | None = None
 
 
-@router.post("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def start_scan(user: User = Depends(get_current_user)) -> None:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Agentic scan not implemented yet (see agent-tooling skill).",
+@router.post("", response_model=ScanRunOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_scan(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ScanRun:
+    account = await db.scalar(
+        select(EmailAccount).where(
+            EmailAccount.user_id == user.id,
+            EmailAccount.provider == "gmail",
+        )
     )
+    if account is None or not account.oauth_refresh_token_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Connect a Gmail account before scanning.",
+        )
+
+    scan = ScanRun(user_id=user.id, status="running", started_at=datetime.now(UTC))
+    db.add(scan)
+    await db.commit()
+    await db.refresh(scan)
+
+    background_tasks.add_task(run_scan_job, scan.id, user.id)
+    return scan
 
 
 @router.get("/{scan_id}", response_model=ScanRunOut)
