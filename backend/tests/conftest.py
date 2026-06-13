@@ -12,6 +12,8 @@ from cryptography.fernet import Fernet
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
+os.environ.setdefault("GOOGLE_OAUTH_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+os.environ.setdefault("GOOGLE_OAUTH_CLIENT_SECRET", "test-client-secret")
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

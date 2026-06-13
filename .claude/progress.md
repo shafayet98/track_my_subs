@@ -17,6 +17,38 @@ The format for each entry:
 
 ---
 
+## 2026-06-13 — Gmail integration (feat/gmail-integration)
+
+**What:** Implemented Phase 3. New `integrations/gmail.py`: OAuth helpers
+(`build_authorization_url` — pure consent-URL building with `access_type=offline`
++ `prompt=consent`; `exchange_code` — code→refresh-token + mailbox address via
+`getProfile`) and a read-only `GmailClient` with `search_candidates` (heuristic
+`CANDIDATE_QUERY`, Gmail `format=metadata` so no bodies are pulled to triage) and
+`get_email` (full fetch → prefer `text/plain`, else HTML stripped via
+BeautifulSoup, length-capped at `MAX_BODY_CHARS`). Wired the accounts API:
+`GET /accounts/gmail/connect` returns the consent URL; `GET /accounts/gmail/callback`
+verifies a signed `state`, exchanges the code off the event loop
+(`run_in_threadpool`), and upserts the account with the **encrypted** refresh
+token. Added `create_oauth_state`/`verify_oauth_state` to `core/security.py`
+(short-lived purpose-scoped JWT, since the callback is unauthenticated). Tests:
+`test_gmail.py` (candidate shape, plaintext/HTML extraction, length cap, empty
+inbox) and `test_accounts_oauth.py` (consent URL scope/params, callback
+encryption + upsert/reconnect, bad-state 400, auth + missing-param guards), Gmail
+boundary faked — no network. Plan: `docs/plans/Gmail_integration.md`.
+**Why:** Phase 3 of the roadmap — gives the backend read-only Gmail access
+(connect + candidate search + single-email fetch), the two read-only operations
+the Phase 4 agent consumes as tools.
+**Touches:** `backend/app/integrations/gmail.py` (new), `backend/app/api/accounts.py`,
+`backend/app/core/security.py`, `backend/tests/test_gmail.py` +
+`test_accounts_oauth.py` (new), `backend/tests/conftest.py`,
+`docs/plans/Gmail_integration.md`.
+**Verified:** `uv run pytest` → 20 passed; `uv run ruff check` + `ruff format
+--check` clean. No live Gmail network in tests (faked service / patched
+`exchange_code`).
+**Follow-ups:** Phase 4 — the agent loop + tools wrapping `search_candidates` /
+`get_email`, scoped per `user_id`/`scan_run_id`. The `last_synced_at` column is
+set during scans (Phase 4), not connect.
+
 ## 2026-06-13 — CI pipeline (chore/ci)
 
 **What:** Added `.github/workflows/ci.yml` — a hermetic backend job (uv install →

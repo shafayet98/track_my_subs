@@ -47,6 +47,31 @@ def decode_access_token(token: str) -> str | None:
     return payload.get("sub")
 
 
+# --- OAuth state -----------------------------------------------------------
+# The Gmail callback is hit by the browser (unauthenticated), so we carry the
+# user id in a short-lived signed `state` JWT rather than a bearer token. The
+# `purpose` claim keeps these tokens distinct from auth tokens.
+
+_OAUTH_STATE_PURPOSE = "gmail_oauth_state"
+
+
+def create_oauth_state(user_id: str, expires_minutes: int = 10) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=expires_minutes)
+    payload: dict[str, Any] = {"sub": user_id, "purpose": _OAUTH_STATE_PURPOSE, "exp": expire}
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def verify_oauth_state(state: str) -> str | None:
+    """Return the user id encoded in a valid OAuth state token, else None."""
+    try:
+        payload = jwt.decode(state, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return None
+    if payload.get("purpose") != _OAUTH_STATE_PURPOSE:
+        return None
+    return payload.get("sub")
+
+
 # --- OAuth-token encryption at rest ---------------------------------------
 
 
