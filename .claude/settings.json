@@ -4,7 +4,11 @@
       "Skill(claude-api)",
       "Skill(claude-api:*)",
       "Edit(/.claude/skills/agent-tooling/**)",
-      "Edit(/.claude/skills/gmail-sync/**)"
+      "Edit(/.claude/skills/gmail-sync/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Edit(**/*.md)",
+      "Write(**/*.md)"
     ]
   }
 }
