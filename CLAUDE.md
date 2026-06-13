@@ -101,6 +101,9 @@ cd frontend && npm install && npm run dev
   `.claude/rules/llm-usage.md`.
 - **We store parsed data only**, never raw email bodies. See
   `.claude/rules/security.md`.
+- **Before starting new work**, write a short plan under `docs/plans/` (named
+  after the task, e.g. `Verify_harden_auth.md`), then code. See
+  `.claude/rules/planning.md`.
 - **Before opening a PR**, update `.claude/progress.md` with what the PR does.
   See `.claude/rules/git-workflow.md`.
 - Backend is async end-to-end (async SQLAlchemy, async Anthropic client where it
