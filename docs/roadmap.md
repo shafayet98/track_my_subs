@@ -78,7 +78,7 @@ overdue).
 
 **Done when:** end-to-end locally — connect Gmail → scan → see charts and cards.
 
-## Phase 7 — AWS deployment (CDK, Python) ⬜
+## Phase 7 — AWS deployment (CDK, Python) 🔜
 
 **Deliverables:** `infra/` CDK app — S3 + CloudFront (SPA), Fargate (API) + a
 separate scan worker, RDS Postgres, Secrets Manager for all secrets.

@@ -1,0 +1,118 @@
+"""Backend stack — ECR + a Fargate API service behind an ALB.
+
+The task pulls its image from ECR (built/pushed separately, so synth/deploy need
+no local Docker), reads DB creds + app secrets from Secrets Manager, runs in
+private subnets, and is allowed to reach RDS. Scans run in-process in the API
+(Phase 4 background tasks); a dedicated worker service is a later change.
+"""
+
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecr as ecr
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_ecs_patterns as ecs_patterns
+from aws_cdk import aws_rds as rds
+from aws_cdk import aws_secretsmanager as secretsmanager
+from constructs import Construct
+
+from stacks.data_stack import DB_NAME
+
+IMAGE_TAG = "latest"
+
+
+class BackendStack(Stack):
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        *,
+        vpc: ec2.IVpc,
+        database: rds.DatabaseInstance,
+        db_secret: secretsmanager.ISecret,
+        app_secret: secretsmanager.ISecret,
+        **kwargs,
+    ) -> None:
+        super().__init__(scope, construct_id, **kwargs)
+
+        repository = ecr.Repository(
+            self,
+            "ApiRepository",
+            repository_name="track-my-subs-api",
+            image_scan_on_push=True,
+            removal_policy=RemovalPolicy.DESTROY,
+            empty_on_delete=True,
+        )
+
+        cluster = ecs.Cluster(self, "Cluster", vpc=vpc)
+
+        # DB connection: host/port/name as env, user/password from the RDS secret.
+        # The container entrypoint composes DATABASE_URL from these.
+        environment = {
+            "DB_HOST": database.db_instance_endpoint_address,
+            "DB_PORT": database.db_instance_endpoint_port,
+            "DB_NAME": DB_NAME,
+        }
+        secrets = {
+            "DB_USER": ecs.Secret.from_secrets_manager(db_secret, "username"),
+            "DB_PASSWORD": ecs.Secret.from_secrets_manager(db_secret, "password"),
+            "ANTHROPIC_API_KEY": ecs.Secret.from_secrets_manager(app_secret, "ANTHROPIC_API_KEY"),
+            "JWT_SECRET": ecs.Secret.from_secrets_manager(app_secret, "JWT_SECRET"),
+            "TOKEN_ENCRYPTION_KEY": ecs.Secret.from_secrets_manager(
+                app_secret, "TOKEN_ENCRYPTION_KEY"
+            ),
+            "GOOGLE_OAUTH_CLIENT_ID": ecs.Secret.from_secrets_manager(
+                app_secret, "GOOGLE_OAUTH_CLIENT_ID"
+            ),
+            "GOOGLE_OAUTH_CLIENT_SECRET": ecs.Secret.from_secrets_manager(
+                app_secret, "GOOGLE_OAUTH_CLIENT_SECRET"
+            ),
+            "GOOGLE_OAUTH_REDIRECT_URI": ecs.Secret.from_secrets_manager(
+                app_secret, "GOOGLE_OAUTH_REDIRECT_URI"
+            ),
+            "FRONTEND_ORIGIN": ecs.Secret.from_secrets_manager(app_secret, "FRONTEND_ORIGIN"),
+        }
+
+        service = ecs_patterns.ApplicationLoadBalancedFargateService(
+            self,
+            "ApiService",
+            cluster=cluster,
+            cpu=512,
+            memory_limit_mib=1024,
+            desired_count=1,
+            min_healthy_percent=100,
+            max_healthy_percent=200,
+            public_load_balancer=True,
+            task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
+            task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
+                image=ecs.ContainerImage.from_ecr_repository(repository, IMAGE_TAG),
+                container_port=8000,
+                environment=environment,
+                secrets=secrets,
+                log_driver=ecs.LogDrivers.aws_logs(stream_prefix="api"),
+            ),
+        )
+
+        service.target_group.configure_health_check(
+            path="/api/health",
+            healthy_http_codes="200",
+            interval=Duration.seconds(30),
+        )
+
+        # Open Postgres to the API task SG. Declaring the ingress rule here (in the
+        # backend stack) keeps the cross-stack dependency one-way: backend → data.
+        ec2.CfnSecurityGroupIngress(
+            self,
+            "DbIngressFromApi",
+            group_id=database.connections.security_groups[0].security_group_id,
+            source_security_group_id=service.service.connections.security_groups[
+                0
+            ].security_group_id,
+            ip_protocol="tcp",
+            from_port=5432,
+            to_port=5432,
+            description="API tasks to Postgres",
+        )
+
+        CfnOutput(self, "EcrRepositoryUri", value=repository.repository_uri)
+        CfnOutput(self, "ApiUrl", value=f"http://{service.load_balancer.load_balancer_dns_name}")

@@ -17,6 +17,48 @@ The format for each entry:
 
 ---
 
+## 2026-06-14 — AWS deployment, CDK (feat/aws-deployment-cdk)
+
+**What:** Implemented Phase 7 — Infrastructure-as-code as an AWS CDK (Python) app
+under `infra/`, targeting the **audrie98** account (`390843337949`),
+`ap-southeast-2` (SSO profile `audrie98`). Four stacks wired in `app.py` with the
+account/region pinned so synth is deterministic and needs no environment lookups:
+**Network** (VPC, 2 AZ, 1 NAT, public + private-with-egress subnets); **Data**
+(RDS PostgreSQL 16, private, encrypted, single-AZ burstable Graviton micro; DB
+creds in an RDS-managed Secrets Manager secret; plus an app-secrets secret —
+`JWT_SECRET` generated, the external keys (Anthropic, Google OAuth, Fernet token
+key, redirect URI, frontend origin) created as empty placeholders the owner fills
+out-of-band); **Backend** (ECR repo, ECS cluster, a Fargate API service behind an
+internet-facing ALB via `ApplicationLoadBalancedFargateService`, health check
+`GET /api/health`, image pulled from ECR by tag so synth/deploy need no local
+Docker; DB host/port/name injected as env and user/password from the RDS secret,
+app secrets injected from Secrets Manager); **Frontend** (private S3 bucket +
+CloudFront with OAC and 403/404 → `index.html` SPA fallback). RDS access is opened
+to the API task SG via a standalone `CfnSecurityGroupIngress` declared in the
+backend stack, keeping the cross-stack dependency one-way (backend → data) and
+avoiding a dependency cycle. Added `backend/Dockerfile` (+ `.dockerignore` and a
+`docker-entrypoint.sh` that composes `DATABASE_URL` from the injected `DB_*` parts
+so the password never sits in a plaintext env var — backend code unchanged).
+`infra/README.md` documents bootstrap → deploy → build/push image → fill secrets →
+migrate → frontend upload → destroy. Pinned `aws-cdk-lib<2.250` to match the
+installed CDK CLI's cloud-assembly schema. CI: added an `infra` job (uv sync →
+ruff check + format check → `cdk synth`) alongside the backend/frontend jobs.
+Plan: `docs/plans/AWS_deployment.md`.
+**Why:** Phase 7 of the roadmap — get the app deployable on AWS (S3+CloudFront SPA,
+Fargate API, RDS Postgres, Secrets Manager).
+**Touches:** `infra/**` (new), `backend/Dockerfile`, `backend/docker-entrypoint.sh`,
+`backend/.dockerignore`, `.github/workflows/ci.yml`, `docs/plans/AWS_deployment.md`.
+**Verified:** `cd infra && uv sync && uv run cdk synth` synthesizes all four stacks
+cleanly (no Docker build needed); `uv run ruff check` + format clean. The one
+context lookup (availability zones, from pinning a real account/region) is cached
+in committed `cdk.context.json`, so CI synth needs no AWS credentials. No secret
+values committed; the app-secrets secret is structure-only.
+**Follow-ups:** Actual `cdk deploy` is a gated step (billable resources) pending
+owner go-ahead. Deferred: a dedicated scan-worker Fargate service (needs a backend
+worker entrypoint — scans run in-process today), custom domain + ACM/Route53,
+CI/CD for image build+push and auto-deploy, autoscaling/WAF/multi-AZ RDS, and
+tightening RDS/S3/ECR removal policies before holding real data.
+
 ## 2026-06-13 — Frontend (feat/frontend)
 
 **What:** Implemented Phase 6 — the React + Vite + TypeScript SPA. New `frontend/`
