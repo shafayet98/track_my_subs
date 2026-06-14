@@ -1,0 +1,17 @@
+[project]
+name = "track-my-subs-infra"
+version = "0.1.0"
+description = "AWS CDK (Python) infrastructure for track_my_subs"
+requires-python = ">=3.12"
+dependencies = [
+    "aws-cdk-lib>=2.170.0,<2.250.0",
+    "constructs>=10.0.0,<11",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.0",
+]
+
+[tool.ruff]
+line-length = 100
