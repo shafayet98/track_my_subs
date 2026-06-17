@@ -17,6 +17,35 @@ The format for each entry:
 
 ---
 
+## 2026-06-17 — API custom domain + HTTPS (feat/api-https-domain)
+
+**What:** Put the backend API behind `https://api.shafcode.xyz` so Google OAuth
+(needs an https redirect on an owned domain) works once deployed. DNS for
+shafcode.xyz now lives in a Route 53 hosted zone in the audrie98 account
+(`Z0858754AS09Y4TNXSF5`; the registrar's nameservers were repointed to it — the
+old delegation was to an empty, unused zone in another account). An ACM cert for
+`api.shafcode.xyz` (ap-southeast-2, DNS-validated against the zone) is referenced
+by ARN. The backend stack now passes `protocol=HTTPS`, the cert, `domain_name`,
+`domain_zone` (referenced via `HostedZone.from_hosted_zone_attributes` — by id, no
+lookup, so CI synth stays offline) and `redirect_http=True` to the
+`ApplicationLoadBalancedFargateService`, which yields an HTTPS:443 listener, an
+HTTP→HTTPS redirect, and an auto-created `api.shafcode.xyz` A-alias to the ALB.
+`GOOGLE_OAUTH_REDIRECT_URI` moved from a secret placeholder to a fixed task env var
+(`https://api.shafcode.xyz/api/accounts/gmail/callback`) and was dropped from the
+app-secrets template. Outputs now show the https API URL + the raw ALB DNS. README
+gains a Domain/DNS/TLS section and the deploy steps reflect the fixed redirect URI;
+plan: `docs/plans/Api_https_domain.md`.
+**Why:** unblock the core Gmail-connect flow in the deployed environment — the API
+must be reachable over https on a domain we control.
+**Touches:** `infra/stacks/backend_stack.py`, `infra/stacks/data_stack.py`,
+`infra/README.md`, `docs/plans/Api_https_domain.md`.
+**Verified:** `cdk synth` clean; the backend template contains an HTTPS:443
+listener using the cert, an HTTP:80→HTTPS redirect, and an `api.shafcode.xyz`
+Route 53 record. `ruff check` + format clean. Not deployed — gated on the cert
+reaching `Issued` (waiting on nameserver propagation) and owner go-ahead.
+**Follow-ups:** deploy once the cert is Issued; a custom frontend domain
+(`app.shafcode.xyz`, needs a us-east-1 cert) is still later.
+
 ## 2026-06-14 — AWS deployment, CDK (feat/aws-deployment-cdk)
 
 **What:** Implemented Phase 7 — Infrastructure-as-code as an AWS CDK (Python) app

@@ -9,11 +9,29 @@ Infrastructure for track_my_subs (Phase 7). Deploys into the **audrie98** accoun
 | ---------------------- | --------------------------------------------------------------------- |
 | `TrackMySubs-Network`  | VPC (2 AZ, 1 NAT), public + private subnets                           |
 | `TrackMySubs-Data`     | RDS PostgreSQL (private) + app-secrets in Secrets Manager             |
-| `TrackMySubs-Backend`  | ECR repo, ECS cluster, Fargate API service behind an ALB             |
+| `TrackMySubs-Backend`  | ECR repo, ECS cluster, Fargate API service on **HTTPS** behind an ALB |
 | `TrackMySubs-Frontend` | Private S3 bucket + CloudFront (OAC, SPA fallback) for the React app  |
 
 Scans run **in-process** in the API today; a dedicated scan-worker service is a
 later change.
+
+## Domain / DNS / TLS
+
+The API is served at **`https://api.shafcode.xyz`**. The `shafcode.xyz` Route 53
+hosted zone (id `Z0858754AS09Y4TNXSF5`) lives in this account, so CDK manages the
+DNS record itself — the backend stack creates the `api.shafcode.xyz` A-alias to the
+ALB automatically. TLS is an ACM certificate (DNS-validated against the zone),
+referenced by ARN in `stacks/backend_stack.py`.
+
+**Before deploying the backend stack, the cert must be `Issued`:**
+
+```bash
+aws acm describe-certificate \
+  --certificate-arn arn:aws:acm:ap-southeast-2:390843337949:certificate/69731ecd-68f6-4de1-a978-1a3745209036 \
+  --region ap-southeast-2 --profile audrie98 --query Certificate.Status --output text
+```
+
+If you ever recreate the cert, update `API_CERTIFICATE_ARN` in the backend stack.
 
 ## Prereqs
 
@@ -69,12 +87,14 @@ uv run cdk synth
        "TOKEN_ENCRYPTION_KEY": "<fernet-key>",
        "GOOGLE_OAUTH_CLIENT_ID": "...",
        "GOOGLE_OAUTH_CLIENT_SECRET": "...",
-       "GOOGLE_OAUTH_REDIRECT_URI": "https://<api-domain>/api/accounts/gmail/callback",
        "FRONTEND_ORIGIN": "https://<cloudfront-domain>",
        "JWT_SECRET": "<keep the generated value>"
      }'
    ```
    (Re-running `put-secret-value` replaces the whole JSON, so include `JWT_SECRET`.)
+   `GOOGLE_OAUTH_REDIRECT_URI` is **not** here — it's a fixed env var on the task
+   (`https://api.shafcode.xyz/api/accounts/gmail/callback`). Register that exact URI
+   as an authorized redirect in the Google OAuth client.
 5. **Run migrations** once (one-off ECS task or any host that can reach RDS):
    ```bash
    alembic upgrade head   # with DATABASE_URL pointing at the RDS instance
@@ -82,7 +102,7 @@ uv run cdk synth
 6. **Deploy the frontend** infra and upload the SPA build:
    ```bash
    uv run cdk deploy TrackMySubs-Frontend
-   cd ../frontend && VITE_API_BASE_URL=https://<api-domain>/api npm run build
+   cd ../frontend && VITE_API_BASE_URL=https://api.shafcode.xyz/api npm run build
    aws s3 sync dist/ s3://<SpaBucketName>/ --delete --profile audrie98
    aws cloudfront create-invalidation --distribution-id <DistributionId> \
      --paths '/*' --profile audrie98

@@ -7,17 +7,30 @@ private subnets, and is allowed to reach RDS. Scans run in-process in the API
 """
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import aws_certificatemanager as acm
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
+from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_rds as rds
+from aws_cdk import aws_route53 as route53
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 from stacks.data_stack import DB_NAME
 
 IMAGE_TAG = "latest"
+
+# Custom domain for the API (audrie98). The hosted zone for shafcode.xyz lives in
+# this account; the ACM cert is validated via DNS in that zone. Referenced by
+# id/arn (no lookups) so `cdk synth` stays offline for CI.
+API_DOMAIN = "api.shafcode.xyz"
+HOSTED_ZONE_ID = "Z0858754AS09Y4TNXSF5"
+HOSTED_ZONE_NAME = "shafcode.xyz"
+API_CERTIFICATE_ARN = (
+    "arn:aws:acm:ap-southeast-2:390843337949:certificate/69731ecd-68f6-4de1-a978-1a3745209036"
+)
 
 
 class BackendStack(Stack):
@@ -45,12 +58,24 @@ class BackendStack(Stack):
 
         cluster = ecs.Cluster(self, "Cluster", vpc=vpc)
 
+        zone = route53.HostedZone.from_hosted_zone_attributes(
+            self,
+            "Zone",
+            hosted_zone_id=HOSTED_ZONE_ID,
+            zone_name=HOSTED_ZONE_NAME,
+        )
+        certificate = acm.Certificate.from_certificate_arn(
+            self, "ApiCertificate", API_CERTIFICATE_ARN
+        )
+
         # DB connection: host/port/name as env, user/password from the RDS secret.
-        # The container entrypoint composes DATABASE_URL from these.
+        # The container entrypoint composes DATABASE_URL from these. The OAuth
+        # redirect URI is fixed now that the API domain is known (not a secret).
         environment = {
             "DB_HOST": database.db_instance_endpoint_address,
             "DB_PORT": database.db_instance_endpoint_port,
             "DB_NAME": DB_NAME,
+            "GOOGLE_OAUTH_REDIRECT_URI": f"https://{API_DOMAIN}/api/accounts/gmail/callback",
         }
         secrets = {
             "DB_USER": ecs.Secret.from_secrets_manager(db_secret, "username"),
@@ -66,9 +91,6 @@ class BackendStack(Stack):
             "GOOGLE_OAUTH_CLIENT_SECRET": ecs.Secret.from_secrets_manager(
                 app_secret, "GOOGLE_OAUTH_CLIENT_SECRET"
             ),
-            "GOOGLE_OAUTH_REDIRECT_URI": ecs.Secret.from_secrets_manager(
-                app_secret, "GOOGLE_OAUTH_REDIRECT_URI"
-            ),
             "FRONTEND_ORIGIN": ecs.Secret.from_secrets_manager(app_secret, "FRONTEND_ORIGIN"),
         }
 
@@ -82,6 +104,13 @@ class BackendStack(Stack):
             min_healthy_percent=100,
             max_healthy_percent=200,
             public_load_balancer=True,
+            # HTTPS at api.shafcode.xyz; HTTP is redirected to HTTPS. The pattern
+            # also creates the A-alias record in the hosted zone.
+            protocol=elbv2.ApplicationProtocol.HTTPS,
+            certificate=certificate,
+            domain_name=API_DOMAIN,
+            domain_zone=zone,
+            redirect_http=True,
             task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
@@ -115,4 +144,5 @@ class BackendStack(Stack):
         )
 
         CfnOutput(self, "EcrRepositoryUri", value=repository.repository_uri)
-        CfnOutput(self, "ApiUrl", value=f"http://{service.load_balancer.load_balancer_dns_name}")
+        CfnOutput(self, "ApiUrl", value=f"https://{API_DOMAIN}")
+        CfnOutput(self, "AlbDnsName", value=service.load_balancer.load_balancer_dns_name)
