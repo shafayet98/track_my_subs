@@ -67,7 +67,6 @@ class DataStack(Stack):
                         "TOKEN_ENCRYPTION_KEY": "",
                         "GOOGLE_OAUTH_CLIENT_ID": "",
                         "GOOGLE_OAUTH_CLIENT_SECRET": "",
-                        "GOOGLE_OAUTH_REDIRECT_URI": "",
                         "FRONTEND_ORIGIN": "",
                     }
                 ),
