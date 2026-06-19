@@ -9,6 +9,7 @@ import aws_cdk as cdk
 
 from stacks.backend_stack import BackendStack
 from stacks.data_stack import DataStack
+from stacks.ecr_stack import EcrStack
 from stacks.frontend_stack import FrontendStack
 from stacks.network_stack import NetworkStack
 
@@ -19,6 +20,8 @@ PREFIX = "TrackMySubs"
 app = cdk.App()
 
 network = NetworkStack(app, f"{PREFIX}-Network", env=ENV)
+
+ecr = EcrStack(app, f"{PREFIX}-Ecr", env=ENV)
 
 data = DataStack(
     app,
@@ -31,6 +34,7 @@ BackendStack(
     app,
     f"{PREFIX}-Backend",
     vpc=network.vpc,
+    repository=ecr.repository,
     database=data.database,
     db_secret=data.db_secret,
     app_secret=data.app_secret,

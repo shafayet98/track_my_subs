@@ -58,27 +58,37 @@ uv run cdk synth
    ```bash
    uv run cdk bootstrap aws://390843337949/ap-southeast-2
    ```
-2. **Deploy the foundation** (network, data, ECR, ALB):
+   > If a deploy later fails with *"No bucket named cdk-hnb659fds-assets-…"*, the
+   > bootstrap staging bucket was deleted out-of-band — recreate it (versioning +
+   > block-public-access + SSE) or re-bootstrap. (This account also bootstraps the
+   > PingList project, so they share that bucket.)
+2. **Deploy ECR first, then the foundation** (the repo is a separate stack so the
+   image can be pushed before the Fargate service starts — otherwise the service
+   can't stabilize without an image, and a rollback would delete the repo):
    ```bash
-   uv run cdk deploy TrackMySubs-Network TrackMySubs-Data TrackMySubs-Backend
+   uv run cdk deploy TrackMySubs-Network TrackMySubs-Ecr TrackMySubs-Data
    ```
-   The API tasks won't be healthy yet — the ECR repo has no image.
-3. **Build & push the API image** to the ECR repo from the `EcrRepositoryUri`
-   output (build for `linux/amd64`):
+3. **Build & push the API image** to the ECR repo (build for `linux/amd64`).
+   Note: use `${REPO}:latest` with braces — bare `$REPO:latest` in zsh triggers
+   the `:l` modifier and mangles the tag:
    ```bash
    ACCOUNT=390843337949; REGION=ap-southeast-2
-   REPO=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/track-my-subs-api
+   REPO="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/track-my-subs-api"
    aws ecr get-login-password --region $REGION --profile audrie98 \
-     | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$REGION.amazonaws.com
-   docker build --platform linux/amd64 -t $REPO:latest ../backend
-   docker push $REPO:latest
+     | docker login --username AWS --password-stdin ${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com
+   docker build --platform linux/amd64 -t "${REPO}:latest" ../backend
+   docker push "${REPO}:latest"
    ```
-   Then force a new deployment so ECS pulls it:
+4. **Deploy the backend service** now that the image exists:
+   ```bash
+   uv run cdk deploy TrackMySubs-Backend
+   ```
+   On later image updates, re-push and force a new deployment:
    ```bash
    aws ecs update-service --cluster <cluster> --service <service> \
      --force-new-deployment --region $REGION --profile audrie98
    ```
-4. **Fill the app secrets** (`track-my-subs/app`). `JWT_SECRET` is generated;
+5. **Fill the app secrets** (`track-my-subs/app`). `JWT_SECRET` is generated;
    set the rest:
    ```bash
    aws secretsmanager put-secret-value --secret-id track-my-subs/app --profile audrie98 \
@@ -95,11 +105,15 @@ uv run cdk synth
    `GOOGLE_OAUTH_REDIRECT_URI` is **not** here — it's a fixed env var on the task
    (`https://api.shafcode.xyz/api/accounts/gmail/callback`). Register that exact URI
    as an authorized redirect in the Google OAuth client.
-5. **Run migrations** once (one-off ECS task or any host that can reach RDS):
+6. **Run migrations** once. RDS is private, so the clean way is a one-off ECS task
+   reusing the API task definition with a command override:
    ```bash
-   alembic upgrade head   # with DATABASE_URL pointing at the RDS instance
+   aws ecs run-task --cluster <cluster> --task-definition <taskdef> --launch-type FARGATE \
+     --network-configuration "awsvpcConfiguration={subnets=[<private-subnets>],securityGroups=[<api-sg>],assignPublicIp=DISABLED}" \
+     --overrides '{"containerOverrides":[{"name":"web","command":["alembic","upgrade","head"]}]}' \
+     --profile audrie98
    ```
-6. **Deploy the frontend** infra and upload the SPA build:
+7. **Deploy the frontend** infra and upload the SPA build:
    ```bash
    uv run cdk deploy TrackMySubs-Frontend
    cd ../frontend && VITE_API_BASE_URL=https://api.shafcode.xyz/api npm run build

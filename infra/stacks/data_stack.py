@@ -31,7 +31,11 @@ class DataStack(Stack):
         self.database = rds.DatabaseInstance(
             self,
             "Postgres",
-            engine=rds.DatabaseInstanceEngine.postgres(version=rds.PostgresEngineVersion.VER_16_4),
+            # .of() (not the VER_* enum) so we can pin an exact minor that's
+            # actually offered in ap-southeast-2 (16.4 was retired).
+            engine=rds.DatabaseInstanceEngine.postgres(
+                version=rds.PostgresEngineVersion.of("16.9", "16")
+            ),
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.MICRO
             ),

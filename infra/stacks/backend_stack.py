@@ -6,7 +6,7 @@ private subnets, and is allowed to reach RDS. Scans run in-process in the API
 (Phase 4 background tasks); a dedicated worker service is a later change.
 """
 
-from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_certificatemanager as acm
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
@@ -40,21 +40,13 @@ class BackendStack(Stack):
         construct_id: str,
         *,
         vpc: ec2.IVpc,
+        repository: ecr.IRepository,
         database: rds.DatabaseInstance,
         db_secret: secretsmanager.ISecret,
         app_secret: secretsmanager.ISecret,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
-        repository = ecr.Repository(
-            self,
-            "ApiRepository",
-            repository_name="track-my-subs-api",
-            image_scan_on_push=True,
-            removal_policy=RemovalPolicy.DESTROY,
-            empty_on_delete=True,
-        )
 
         cluster = ecs.Cluster(self, "Cluster", vpc=vpc)
 

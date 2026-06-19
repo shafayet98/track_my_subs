@@ -55,10 +55,15 @@ def _client_config() -> dict:
 
 
 def _flow() -> Flow:
+    # Disable PKCE: a new Flow is built for the auth-URL and token-exchange steps,
+    # so an auto-generated code_verifier wouldn't survive between them and Google
+    # would reject the exchange with invalid_grant. This is a confidential "web"
+    # client (it has a client_secret), so PKCE isn't required.
     return Flow.from_client_config(
         _client_config(),
         scopes=[settings.gmail_scope],
         redirect_uri=settings.google_oauth_redirect_uri,
+        autogenerate_code_verifier=False,
     )
 
 
