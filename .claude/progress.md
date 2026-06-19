@@ -17,6 +17,21 @@ The format for each entry:
 
 ---
 
+## 2026-06-20 — Top-level README (chore/readme)
+
+**What:** Added a human-facing `README.md` at the repo root (there was none —
+`CLAUDE.md` is agent-facing). Covers the product pitch + privacy posture, how the
+agent works, tech stack, an architecture diagram, local-dev quickstart + required
+secrets, tests/checks, deployment + CD summary, the contributing flow (the
+`/plan` `/coding` `/cpr` `/investigate` commands + rules), project layout, and a
+CI badge. Links out to `docs/architecture.md`, `infra/README.md`, `docs/roadmap.md`,
+and `.claude/rules/`.
+**Why:** the repo had no project description for humans / GitHub visitors.
+**Touches:** `README.md` (new).
+**Verified:** docs-only; links point at existing paths. No code/tests affected.
+**Follow-ups:** add a LICENSE if the project is opened up; drop in screenshots/GIF
+once there's a public demo instance.
+
 ## 2026-06-20 — CD pipeline: GitHub OIDC → IAM (feat/cd-pipeline)
 
 **What:** Auto-deploy to AWS on merge to `main`, authenticated via GitHub OIDC
