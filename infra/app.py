@@ -8,6 +8,7 @@ docs/plans/AWS_deployment.md and the `aws-deploy-account` memory.
 import aws_cdk as cdk
 
 from stacks.backend_stack import BackendStack
+from stacks.cicd_stack import CicdStack
 from stacks.data_stack import DataStack
 from stacks.ecr_stack import EcrStack
 from stacks.frontend_stack import FrontendStack
@@ -42,5 +43,8 @@ BackendStack(
 )
 
 FrontendStack(app, f"{PREFIX}-Frontend", env=ENV)
+
+# Deployed once to set up GitHub OIDC + the deploy role; not redeployed by CD.
+CicdStack(app, f"{PREFIX}-Cicd", env=ENV)
 
 app.synth()

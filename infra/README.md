@@ -122,6 +122,25 @@ uv run cdk synth
      --paths '/*' --profile audrie98
    ```
 
+## CD (auto-deploy on merge to main)
+
+`.github/workflows/cd.yml` deploys automatically on every push to `main`. It
+authenticates with **GitHub OIDC → the `github-actions-deploy` IAM role** (no
+stored AWS keys), then: builds + pushes the API image tagged with the commit SHA,
+`cdk deploy`s the app stacks with `-c imageTag=<sha>`, runs migrations as a one-off
+ECS task, and builds + uploads the SPA with a CloudFront invalidation.
+
+The OIDC provider + role live in the **`TrackMySubs-Cicd`** stack. Deploy it once
+(it is intentionally **not** redeployed by CD, so the pipeline can't rewrite its
+own permissions):
+
+```bash
+uv run cdk deploy TrackMySubs-Cicd
+```
+
+Trust is scoped to `repo:shafayet98/track_my_subs:ref:refs/heads/main`. Migrations
+run *after* the service rolls onto the new image, so keep them backward-compatible.
+
 ## Tear down
 
 ```bash

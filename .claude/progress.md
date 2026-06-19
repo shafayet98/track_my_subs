@@ -17,6 +17,36 @@ The format for each entry:
 
 ---
 
+## 2026-06-20 — CD pipeline: GitHub OIDC → IAM (feat/cd-pipeline)
+
+**What:** Auto-deploy to AWS on merge to `main`, authenticated via GitHub OIDC
+(no long-lived keys). New CDK stack `cicd_stack.py` (`TrackMySubs-Cicd`) creates a
+GitHub OIDC provider + a `github-actions-deploy` role whose trust is scoped to
+`repo:shafayet98/track_my_subs:ref:refs/heads/main`; the role can assume the CDK
+bootstrap roles (for `cdk deploy`) and do the direct steps (ECR push, ECS RunTask
++ PassRole, SPA-bucket S3 sync, CloudFront invalidation, CFN DescribeStacks) —
+scoped, not a broad managed policy. `backend_stack.py` now reads the image tag
+from `imageTag` context (default `latest`) so CD deploys by commit SHA and ECS
+rolls deterministically. New `.github/workflows/cd.yml` (on push to main): OIDC
+auth → build/push image tagged `$GITHUB_SHA` → `cdk deploy` the 5 app stacks with
+`-c imageTag=$GITHUB_SHA` → run migrations as a one-off ECS task (discovers
+cluster/taskdef/network at runtime) + wait services-stable → build SPA → s3 sync +
+CloudFront invalidation (bucket/dist from `TrackMySubs-Frontend` outputs).
+`concurrency: deploy-prod` prevents overlap. The Cicd stack is intentionally NOT
+deployed by CD. Deployed `TrackMySubs-Cicd` once to create the provider + role.
+Plan: `docs/plans/CD_pipeline.md`.
+**Why:** the follow-up from the manual first deploy — encode the runbook so
+merge-to-main ships the app with no manual `aws`/`cdk`/`docker` steps.
+**Touches:** `infra/stacks/cicd_stack.py` (new), `infra/stacks/backend_stack.py`,
+`infra/app.py`, `.github/workflows/cd.yml`, `infra/README.md`,
+`docs/plans/CD_pipeline.md`.
+**Verified:** `cdk synth -c imageTag=…` produces all 6 stacks incl. `TrackMySubs-Cicd`;
+ruff clean; `cd.yml` valid YAML; `TrackMySubs-Cicd` deployed (OIDC provider +
+`github-actions-deploy` role exist). End-to-end pipeline run is verified post-merge
+(first push to main with the workflow present).
+**Follow-ups:** tighten ECS/CloudFront resource scoping; optional manual-approval
+GitHub Environment; migrations currently run post-rollout (keep them additive).
+
 ## 2026-06-20 — First AWS deploy: fixes (fix/rds-postgres-version)
 
 **What:** Fixes found while doing the first real `cdk deploy` of the stack into

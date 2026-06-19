@@ -20,8 +20,6 @@ from constructs import Construct
 
 from stacks.data_stack import DB_NAME
 
-IMAGE_TAG = "latest"
-
 # Custom domain for the API (audrie98). The hosted zone for shafcode.xyz lives in
 # this account; the ACM cert is validated via DNS in that zone. Referenced by
 # id/arn (no lookups) so `cdk synth` stays offline for CI.
@@ -47,6 +45,11 @@ class BackendStack(Stack):
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # Image tag to run. CD passes the commit SHA (`-c imageTag=<sha>`) so the
+        # task definition changes and ECS rolls onto the new image; defaults to
+        # `latest` for manual deploys.
+        image_tag = self.node.try_get_context("imageTag") or "latest"
 
         cluster = ecs.Cluster(self, "Cluster", vpc=vpc)
 
@@ -106,7 +109,7 @@ class BackendStack(Stack):
             task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
             circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True),
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
-                image=ecs.ContainerImage.from_ecr_repository(repository, IMAGE_TAG),
+                image=ecs.ContainerImage.from_ecr_repository(repository, image_tag),
                 container_port=8000,
                 environment=environment,
                 secrets=secrets,
