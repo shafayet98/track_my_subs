@@ -17,6 +17,42 @@ The format for each entry:
 
 ---
 
+## 2026-06-20 — First AWS deploy: fixes (fix/rds-postgres-version)
+
+**What:** Fixes found while doing the first real `cdk deploy` of the stack into
+audrie98 (the app is now live: SPA on CloudFront, API at https://api.shafcode.xyz,
+RDS, ECS Fargage, secrets, connect-Gmail → scan all working). Three changes:
+1. **RDS engine 16.4 → 16.9** (`data_stack.py`) — 16.4 was retired in
+   ap-southeast-2; use `PostgresEngineVersion.of("16.9","16")` to pin an
+   actually-offered minor.
+2. **ECR split into its own stack** (`ecr_stack.py` new; `backend_stack.py` takes
+   `repository` as a prop; `app.py` deploys `TrackMySubs-Ecr` and wires it). The
+   repo previously lived in the backend stack, so on first deploy the Fargate
+   service couldn't stabilize (no image yet) and the rollback **deleted the repo**.
+   Separate lifecycle = deploy repo → push image → deploy service.
+3. **OAuth PKCE fix** (`gmail.py`) — `Flow` defaulted to
+   `autogenerate_code_verifier=True`, so the auth-URL step sent a PKCE challenge
+   but the token-exchange step (a fresh `Flow`) had a different verifier →
+   Google returned `invalid_grant`. Set `autogenerate_code_verifier=False`
+   (confidential web client with a secret doesn't need PKCE). This was never
+   caught earlier because the OAuth round-trip was only ever tested against
+   fixtures, never live.
+   README updated: new deploy order (ECR before image push), the bootstrap-bucket
+   recreation gotcha, the zsh `${REPO}:latest` tag gotcha, and a one-off ECS
+   `run-task` recipe for migrations.
+**Why:** get the first real deployment working end-to-end; land the fixes on
+`main` so the repo matches what's deployed.
+**Touches:** `infra/stacks/data_stack.py`, `infra/stacks/ecr_stack.py` (new),
+`infra/stacks/backend_stack.py`, `infra/app.py`, `backend/app/integrations/gmail.py`,
+`infra/README.md`.
+**Verified:** stack deployed; `https://api.shafcode.xyz/api/health` 200; Gmail
+connect (callback 303) + scan populate real subscriptions on the dashboard;
+`cdk synth` + ruff clean.
+**Follow-ups:** CD pipeline (GitHub OIDC role → build/push/deploy on merge);
+history synthesis (identify a subscription once, then derive payment history from
+cadence instead of reading every email — raise/paginate the 100-candidate cap);
+rotate the Anthropic key (it transited chat during setup).
+
 ## 2026-06-17 — API custom domain + HTTPS (feat/api-https-domain)
 
 **What:** Put the backend API behind `https://api.shafcode.xyz` so Google OAuth
