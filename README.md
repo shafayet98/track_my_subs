@@ -121,7 +121,8 @@ Full deploy runbook: [`infra/README.md`](infra/README.md).
 
 ## Contributing
 
-Work is branch-per-change with a PR into `main`; CI must pass and
+See **[`contributor_guideline.md`](contributor_guideline.md)** for the full guide.
+In short: work is branch-per-change with a PR into `main`; CI must pass and
 [`.claude/progress.md`](.claude/progress.md) gets an entry before each PR.
 The repo ships Claude Code slash commands that encode this flow:
 
