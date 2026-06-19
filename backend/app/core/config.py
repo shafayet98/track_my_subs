@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # App
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
 
+    # Scan: how far back (days) the candidate-email search looks.
+    scan_lookback_days: int = Field(default=14, alias="SCAN_LOOKBACK_DAYS")
+
 
 @lru_cache
 def get_settings() -> Settings:
