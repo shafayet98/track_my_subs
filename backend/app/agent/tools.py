@@ -75,6 +75,13 @@ TOOL_SCHEMAS: list[dict] = [
                     "type": "string",
                     "description": "Inferred next charge date, YYYY-MM-DD.",
                 },
+                "trial_end_date": {
+                    "type": "string",
+                    "description": (
+                        "Date a free trial converts to paid, YYYY-MM-DD. Set only "
+                        "when the email indicates a trial converting on a specific date."
+                    ),
+                },
                 "confidence": {
                     "type": "number",
                     "description": "0..1 confidence this is a real subscription.",
@@ -214,6 +221,10 @@ async def _exec_upsert_subscription(ctx: ScanContext, data: dict) -> tuple[str, 
     if err:
         return json.dumps({"error": err}), True
 
+    trial_end, err = _parse_date(data.get("trial_end_date"))
+    if err:
+        return json.dumps({"error": err}), True
+
     existing = await ctx.db.scalar(
         select(Subscription).where(
             Subscription.user_id == ctx.user_id,
@@ -235,6 +246,8 @@ async def _exec_upsert_subscription(ctx: ScanContext, data: dict) -> tuple[str, 
         sub.status = data["status"]
     if next_date is not None:
         sub.next_payment_date = next_date
+    if trial_end is not None:
+        sub.trial_end_date = trial_end
     if "confidence" in data:
         sub.confidence = data["confidence"]
 

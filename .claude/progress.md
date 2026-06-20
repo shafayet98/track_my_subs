@@ -17,6 +17,42 @@ The format for each entry:
 
 ---
 
+## 2026-06-21 — Renewal & free-trial alerts: capture + detection (feat/renewal-trial-alerts, #18)
+
+**What:** Stage A of proactive notifications (issue #18) — the capture and
+detection core, no delivery yet. The agent can now record when a free trial
+converts to paid: added an optional `trial_end_date` to the `upsert_subscription`
+tool schema/executor (same `_parse_date` path as `next_payment_date`, tool order
+unchanged for prompt caching) and to the system prompt (set only when an email
+indicates a trial converting on a date; the convert-to amount stays in `amount`).
+Added `Subscription.trial_end_date` plus two models: `Notification` (a sent-alert
+log; unique `(subscription_id, event_type, event_date)` so a concrete event is
+alerted at most once) and `NotificationPreference` (per-user on/off for renewals /
+trial conversions / missed payments + `lead_time_days`, defaults all-on / 3 days).
+Migration `0002` is additive (one nullable column + two tables), backward-
+compatible. The detection core is `services/alerts.py::due_notifications(...)` — a
+**pure** function (no DB/IO/clock; `today` passed in) that, given a user's subs,
+payments, prefs, and the already-sent set, returns the events due now: renewals
+and trial conversions within `[today, today+lead_time_days]`, and missed/overdue
+payments (already flagged by the agent), deduped (against the sent log and within
+a run) and respecting prefs; cancelled subs are skipped.
+**Why:** issue #18 — turn the passive dashboard into something that proactively
+saves users money (esp. free-trial conversions). Keeping detection pure lets us
+land + fully test the logic now, before the Stage-B scheduler/SES wiring.
+**Touches:** `backend/app/models/{subscription,notification,notification_preference,__init__}.py`,
+`backend/alembic/versions/0002_renewal_trial_alerts.py`,
+`backend/app/agent/{tools,prompts}.py`, `backend/app/services/alerts.py`,
+`backend/tests/{test_alerts,test_agent_tools}.py`,
+`docs/plans/Renewal_And_Trial_Alerts.md`.
+**Verified:** `ruff check` + `ruff format --check` clean; full suite 56 tests pass
+(14 new); `alembic upgrade head` applies and `alembic check` reports no drift;
+live-exercised `due_notifications` against the issue's Notion-trial / Netflix-
+renewal / Spotify-missed scenario incl. dedup re-run and prefs opt-out.
+**Follow-ups:** Stage B — scheduled worker (EventBridge → ECS) running detection
+per user, SES delivery (CDK identity + IAM, `integrations/ses_client.py`, parsed
+facts only), `notification_preferences` API + frontend settings screen. Price-
+increase alerts reuse this channel later.
+
 ## 2026-06-21 — Scan all accounts + remove the 100-email cap (feat/scan-all-accounts-no-cap, #23)
 
 **What:** Made a scan comprehensive in two dimensions. **Part A** — dropped the

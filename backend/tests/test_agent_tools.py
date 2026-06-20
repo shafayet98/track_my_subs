@@ -59,6 +59,33 @@ async def test_upsert_subscription_creates_then_updates(session, make_user):
     assert sub.amount == 12.99
 
 
+async def test_upsert_subscription_records_trial_end_date(session, make_user):
+    user = await make_user("trial@example.com")
+    ctx = _ctx(session, user["user_id"])
+
+    out, err = await execute_tool(
+        ctx,
+        "upsert_subscription",
+        {"merchant_name": "Notion", "amount": 96.0, "trial_end_date": "2026-06-22"},
+    )
+    assert not err
+    sid = json.loads(out)["subscription_id"]
+    sub = await session.get(Subscription, uuid.UUID(sid))
+    assert sub.trial_end_date.isoformat() == "2026-06-22"
+
+
+async def test_upsert_subscription_rejects_bad_trial_end_date(session, make_user):
+    user = await make_user("badtrial@example.com")
+    ctx = _ctx(session, user["user_id"])
+    out, err = await execute_tool(
+        ctx,
+        "upsert_subscription",
+        {"merchant_name": "Notion", "trial_end_date": "soon"},
+    )
+    assert err is True
+    assert "invalid date" in json.loads(out)["error"]
+
+
 async def test_record_payment_scopes_to_user_and_dedups(session, make_user):
     user = await make_user("pay@example.com")
     ctx = _ctx(session, user["user_id"])

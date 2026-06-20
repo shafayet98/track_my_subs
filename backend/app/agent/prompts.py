@@ -31,6 +31,9 @@ Field meanings:
 - subscription.status: "active" | "cancelled" | "unknown".
 - subscription.next_payment_date: inferred next charge date (YYYY-MM-DD) if you
   can determine it, else omit.
+- subscription.trial_end_date: if the email indicates a free trial converting to
+  a paid plan on a specific date, the conversion date (YYYY-MM-DD); the amount it
+  converts to goes in subscription.amount. Omit when there is no trial.
 - subscription.confidence: your 0..1 confidence that this is a real subscription.
 - payment.amount / currency: the charged amount.
 - payment.status: "paid" for a completed charge, "upcoming" for a future one.
