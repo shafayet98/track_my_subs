@@ -35,13 +35,18 @@ export default function LoginPage() {
     }
   }
 
+  function toggleMode() {
+    setMode(mode === "login" ? "register" : "login");
+    setError(null);
+  }
+
   return (
     <div className="center">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1 className="brand">track_my_subs</h1>
-        <p className="muted">
-          {mode === "login" ? "Sign in to your account" : "Create an account"}
-        </p>
+        <div className="auth-head">
+          <div className="brand">Track My Subs</div>
+          <p>{mode === "login" ? "Welcome back" : "Create an account"}</p>
+        </div>
 
         {mode === "register" && (
           <label>
@@ -59,6 +64,7 @@ export default function LoginPage() {
           <input
             type="email"
             required
+            placeholder="you@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -69,6 +75,7 @@ export default function LoginPage() {
             type="password"
             required
             minLength={8}
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -76,22 +83,29 @@ export default function LoginPage() {
 
         {error && <div className="error">{error}</div>}
 
-        <button className="btn" type="submit" disabled={busy}>
+        <button className="btn btn-block" type="submit" disabled={busy}>
           {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
         </button>
 
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() => {
-            setMode(mode === "login" ? "register" : "login");
-            setError(null);
-          }}
-        >
-          {mode === "login"
-            ? "Need an account? Register"
-            : "Have an account? Sign in"}
-        </button>
+        {mode === "login" ? (
+          <>
+            <p className="auth-alt">Need an account?</p>
+            <button
+              type="button"
+              className="btn-outline btn-block"
+              onClick={toggleMode}
+            >
+              Register
+            </button>
+          </>
+        ) : (
+          <p className="auth-alt">
+            Have an account?{" "}
+            <button type="button" className="btn-link" onClick={toggleMode}>
+              <strong style={{ color: "var(--accent)" }}>Sign in</strong>
+            </button>
+          </p>
+        )}
       </form>
     </div>
   );

@@ -1,23 +1,34 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { initials } from "../lib/format";
 
 export function Layout() {
   const { user, logout } = useAuth();
+  const displayName = user?.name || user?.email?.split("@")[0] || "Account";
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">track_my_subs</div>
-        <nav className="nav">
-          <NavLink to="/" end>
+        <div className="topbar-left">
+          <NavLink to="/" end className="nav-link">
             Dashboard
           </NavLink>
-          <NavLink to="/connect">Connect</NavLink>
-        </nav>
-        <div className="spacer" />
-        <span className="muted">{user?.email}</span>
-        <button className="btn-ghost" onClick={logout}>
-          Sign out
-        </button>
+          <Link to="/connect" className="btn">
+            Connect
+          </Link>
+        </div>
+
+        <div className="brand">Track My Subs</div>
+
+        <div className="topbar-right">
+          <span className="avatar round">
+            {initials(displayName)}
+          </span>
+          <span className="uname">{displayName}</span>
+          <button className="btn-outline" onClick={logout}>
+            Sign out
+          </button>
+        </div>
       </header>
       <main className="content">
         <Outlet />

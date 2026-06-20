@@ -21,6 +21,19 @@ export function monthLabel(month: string): string {
   return d.toLocaleString(undefined, { month: "short" });
 }
 
+export function initials(name: string): string {
+  // Ignore parenthetical suffixes, then first + last initial (max 2 letters).
+  // "Anthropic (Claude Pro)" -> "A"; "Atlassian Jira" -> "AJ"
+  const words = name
+    .replace(/\(.*?\)/g, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0][0].toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
 export function isoDate(date: string | null): string {
   if (!date) return "—";
   const d = new Date(date);

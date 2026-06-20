@@ -20,58 +20,67 @@ export default function DashboardPage() {
     <div className="page">
       <div className="page-head">
         <h2>Dashboard</h2>
-        <Link className="btn" to="/connect">
-          Connect &amp; scan
-        </Link>
       </div>
 
       {summary.error && <div className="error">{summary.error}</div>}
 
       {summary.data && (
-        <>
-          <div className="stat-row">
-            <div className="stat">
-              <span className="stat-label">This month</span>
-              <span className="stat-value">
+        <div className="summary-grid">
+          <div className="summary-card">
+            <div className="summary-hero">
+              <div className="label">This month</div>
+              <div className="hero-value">
                 {money(summary.data.this_month, null)}
-              </span>
+              </div>
               {delta !== null && (
-                <span className={delta > 0 ? "down" : "up"}>
+                <span className={`delta ${delta > 0 ? "down" : "up"}`}>
                   {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(0)}% vs last
                   month
                 </span>
               )}
             </div>
-            <div className="stat">
-              <span className="stat-label">Last month</span>
-              <span className="stat-value">
-                {money(summary.data.last_month, null)}
-              </span>
-            </div>
-            <div className="stat">
-              <span className="stat-label">Active subscriptions</span>
-              <span className="stat-value">
-                {summary.data.active_subscriptions}
-              </span>
+            <div className="summary-sub">
+              <div>
+                <div className="label">Last month</div>
+                <div className="sub-value">
+                  {money(summary.data.last_month, null)}
+                </div>
+              </div>
+              <div>
+                <div className="label">Active</div>
+                <div className="sub-value">
+                  {summary.data.active_subscriptions} subs
+                </div>
+              </div>
             </div>
           </div>
 
-          <section className="panel">
-            <h3>Spend (last 12 months)</h3>
+          <section className="chart-card">
+            <div className="chart-head">
+              <h3>Spend</h3>
+              <span className="muted">last 12 months</span>
+            </div>
             <SpendChart data={summary.data.monthly_spend} />
           </section>
-        </>
+        </div>
       )}
 
       <section>
-        <h3>Subscriptions</h3>
-        {subs.loading && <p className="muted">Loading…</p>}
+        <div className="section-head">
+          <h3>Subscriptions</h3>
+          {subs.data && subs.data.length > 0 && (
+            <span className="count">{subs.data.length}</span>
+          )}
+        </div>
+        {subs.loading && <p className="empty">Loading…</p>}
         {subs.error && <div className="error">{subs.error}</div>}
         {subs.data && subs.data.length === 0 && (
-          <p className="muted">
-            No subscriptions yet. <Link to="/connect">Connect Gmail</Link> and
-            run a scan to populate your dashboard.
-          </p>
+          <div className="panel">
+            <p className="empty">
+              No subscriptions yet. <Link to="/connect">Connect Gmail</Link> and
+              run a scan to populate your dashboard.
+            </p>
+          </div>
         )}
         {subs.data && subs.data.length > 0 && (
           <div className="card-grid">

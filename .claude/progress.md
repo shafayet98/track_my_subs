@@ -17,6 +17,38 @@ The format for each entry:
 
 ---
 
+## 2026-06-21 — Frontend redesign + 2-month scan window (feat/frontend-redesign, #20)
+
+**What:** Redesigned the SPA to a warm cream/coral, monospace-accented look (per
+provided screenshots) and widened the default scan window. Frontend: rewrote
+`index.css` as a design-token system (cream bg, coral accent, Space Mono for
+brand/numbers/labels, soft shadowed cards, rounded status pills incl.
+`cancelled`/`unknown`), added the Space Mono font link in `index.html`, and an
+`initials()` helper. Restyled every screen: 3-section topbar with centered brand +
+`Connect` button + user avatar (`Layout`); auth "Welcome back / Create an account"
+(`LoginPage`); dashboard coral summary card beside the chart card + Subscriptions
+count + better empty state (`DashboardPage`); merchant-avatar subscription cards
+(`SubscriptionCard`); avatar header + stat cards + payment table
+(`SubscriptionDetailPage`); coral chart bars (`SpendChart`); and a friendlier "no
+candidate emails — connect the inbox where your receipts arrive" message on the
+scan page (`ConnectAccountPage`). No backend data/schema changes — the API already
+returned category/confidence/payments. Backend: `SCAN_LOOKBACK_DAYS` default
+14 → 60 (~2 months) so a first scan catches a billing cycle; the existing lookback
+test reads `settings.scan_lookback_days` so it adapts. Chose refined CSS over a
+Tailwind migration to match the screenshots precisely with a reviewable diff.
+Plan: `docs/plans/Frontend_redesign_and_2mo_scan.md`.
+**Why:** issue #20 — make the product look finished for real users, and stop sparse
+mailboxes returning nothing on a first scan.
+**Touches:** `frontend/index.html`, `frontend/src/index.css`,
+`frontend/src/components/{Layout,SubscriptionCard,SpendChart}.tsx`,
+`frontend/src/pages/{Login,Dashboard,ConnectAccount,SubscriptionDetail}Page.tsx`,
+`frontend/src/lib/format.ts`, `backend/app/core/config.py`,
+`docs/plans/Frontend_redesign_and_2mo_scan.md`.
+**Verified:** `npm run lint` + `npm run build` green; backend `ruff` clean + all 42
+tests pass.
+**Follow-ups:** optional Tailwind/component-library migration; code-split the
+Recharts-heavy bundle; self-host the font.
+
 ## 2026-06-20 — Time-based scan window: last 14 days (feat/scan-lookback-window)
 
 **What:** Changed the mailbox scan from a count-based window (the 100 most-recent
