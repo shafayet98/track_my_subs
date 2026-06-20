@@ -46,8 +46,9 @@ class Settings(BaseSettings):
     # App
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
 
-    # Scan: how far back (days) the candidate-email search looks.
-    scan_lookback_days: int = Field(default=14, alias="SCAN_LOOKBACK_DAYS")
+    # Scan: how far back (days) the candidate-email search looks. ~2 months so a
+    # first scan reliably catches at least one billing cycle for monthly subs.
+    scan_lookback_days: int = Field(default=60, alias="SCAN_LOOKBACK_DAYS")
 
 
 @lru_cache

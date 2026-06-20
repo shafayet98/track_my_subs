@@ -67,6 +67,8 @@ export default function ConnectAccountPage() {
   }
 
   const hasAccount = (accounts.data?.length ?? 0) > 0;
+  const emptyResult =
+    scan?.status === "succeeded" && scan.subscriptions_found === 0;
 
   return (
     <div className="page">
@@ -80,16 +82,17 @@ export default function ConnectAccountPage() {
       {error && <div className="error">{error}</div>}
 
       <section className="panel">
-        <h3>Email accounts</h3>
-        {accounts.loading && <p className="muted">Loading…</p>}
+        <h3 className="panel-title">Email accounts</h3>
+        {accounts.loading && <p className="empty">Loading…</p>}
         {accounts.data && accounts.data.length === 0 && (
-          <p className="muted">No accounts connected yet.</p>
+          <p className="empty">No accounts connected yet.</p>
         )}
         {accounts.data && accounts.data.length > 0 && (
-          <ul className="list">
+          <ul className="account-list">
             {accounts.data.map((a) => (
               <li key={a.id}>
-                <strong>{a.email_address}</strong>{" "}
+                <span className="avatar">{a.email_address[0].toUpperCase()}</span>
+                <strong>{a.email_address}</strong>
                 <span className="muted">({a.provider})</span>
               </li>
             ))}
@@ -101,10 +104,10 @@ export default function ConnectAccountPage() {
       </section>
 
       <section className="panel">
-        <h3>Scan mailbox</h3>
-        <p className="muted">
-          The agent reads candidate emails and records subscriptions and
-          payments. This can take a couple of minutes.
+        <h3 className="panel-title">Scan mailbox</h3>
+        <p className="empty" style={{ marginTop: 0 }}>
+          The agent reads candidate emails from the last couple of months and
+          records subscriptions and payments. This can take a couple of minutes.
         </p>
         <button
           className="btn"
@@ -114,17 +117,25 @@ export default function ConnectAccountPage() {
           {scanning ? "Scanning…" : "Scan now"}
         </button>
         {!hasAccount && (
-          <p className="muted">Connect a Gmail account first.</p>
+          <p className="empty">Connect a Gmail account first.</p>
         )}
 
         {scan && (
           <div className="scan-status">
             <span className={`pill pill-${scan.status}`}>{scan.status}</span>
-            <span className="muted">
+            <span className="counts">
               {scan.emails_scanned} emails · {scan.subscriptions_found}{" "}
               subscriptions
             </span>
-            {scan.summary && <p>{scan.summary}</p>}
+            {emptyResult ? (
+              <p className="empty">
+                We didn't find any subscription or receipt emails in this
+                mailbox. Try connecting the inbox where your receipts actually
+                arrive, then scan again.
+              </p>
+            ) : (
+              scan.summary && <p>{scan.summary}</p>
+            )}
           </div>
         )}
       </section>
