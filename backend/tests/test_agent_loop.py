@@ -6,12 +6,14 @@ iteration cap, and that a tool call writes a correctly-scoped row.
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.agent.loop import run_agent_loop
+from app.agent.loop import run_agent_loop, run_scan_job
 from app.agent.tools import ScanContext
-from app.models import Payment, Subscription
+from app.core.config import settings
+from app.models import EmailAccount, Payment, ScanRun, Subscription
 
 
 @dataclass
@@ -129,3 +131,51 @@ async def test_loop_stops_at_max_iterations(session, make_user):
 
     assert result == "max_iterations"
     assert client.messages.calls == 3
+
+
+async def test_scan_job_searches_within_lookback_window(session, make_user, monkeypatch):
+    """run_scan_job must pass search_candidates an `after` ~ now - scan_lookback_days."""
+    user = await make_user("window@example.com")
+    account = EmailAccount(
+        user_id=user["user_id"],
+        provider="gmail",
+        email_address="window@example.com",
+        oauth_refresh_token_encrypted="enc",
+    )
+    scan = ScanRun(user_id=user["user_id"], status="running")
+    session.add_all([account, scan])
+    await session.commit()
+    await session.refresh(scan)
+
+    captured: dict = {}
+
+    class _FakeGmail:
+        @classmethod
+        def from_refresh_token(cls, _token):
+            return cls()
+
+        def search_candidates(self, *, after=None):
+            captured["after"] = after
+            return []
+
+    async def _fake_loop(ctx, client, **kwargs):
+        return "completed"
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("app.agent.loop.SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr("app.agent.loop.decrypt_token", lambda _enc: "tok")
+    monkeypatch.setattr("app.agent.loop.GmailClient", _FakeGmail)
+    monkeypatch.setattr("app.agent.loop.get_anthropic_client", lambda: object())
+    monkeypatch.setattr("app.agent.loop.run_agent_loop", _fake_loop)
+
+    await run_scan_job(scan.id, user["user_id"])
+
+    expected = datetime.now(UTC) - timedelta(days=settings.scan_lookback_days)
+    assert captured["after"] is not None
+    assert abs((captured["after"] - expected).total_seconds()) < 60

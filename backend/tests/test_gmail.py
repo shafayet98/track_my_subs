@@ -5,6 +5,7 @@ The fake mirrors the googleapiclient builder shape:
 """
 
 import base64
+from datetime import datetime
 
 from app.integrations.gmail import GmailClient
 
@@ -85,6 +86,24 @@ def test_search_candidates_returns_lightweight_rows():
 def test_search_candidates_empty_inbox():
     client = GmailClient(_FakeService({}, {}))
     assert client.search_candidates() == []
+
+
+def test_search_candidates_applies_after_date():
+    client = GmailClient(_FakeService({}, {}))
+
+    client.search_candidates(after=datetime(2026, 6, 6, 12, 0, 0))
+
+    q = client._service.users().messages().list_kwargs["q"]
+    assert "after:2026/06/06" in q
+
+
+def test_search_candidates_no_date_filter_by_default():
+    client = GmailClient(_FakeService({}, {}))
+
+    client.search_candidates()
+
+    q = client._service.users().messages().list_kwargs["q"]
+    assert "after:" not in q
 
 
 def test_get_email_prefers_plaintext():

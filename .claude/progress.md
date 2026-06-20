@@ -17,6 +17,30 @@ The format for each entry:
 
 ---
 
+## 2026-06-20 — Time-based scan window: last 14 days (feat/scan-lookback-window)
+
+**What:** Changed the mailbox scan from a count-based window (the 100 most-recent
+candidate emails, no date filter) to a time-based one: the last N days (default
+14). Added `scan_lookback_days` to `core/config.py` (env `SCAN_LOOKBACK_DAYS`) so
+the window is one tunable value. `agent/loop.py`'s `run_scan_job` now computes
+`after = now(UTC) - timedelta(days=settings.scan_lookback_days)` and passes it to
+the already-supported `GmailClient.search_candidates(after=...)`. `max_results`
+stays at 100 as a safety cap (documented) — a 14-day window is far smaller than an
+all-time mailbox, so truncation risk drops; pagination stays deferred (it pairs
+with the larger history-synthesis idea). Tests (`test_gmail.py`): the `after:`
+filter lands in the Gmail query with the expected date, and no date filter is
+applied by default. Gmail mocked at the boundary (no network). Closes #14. Plan:
+`docs/plans/Scan_lookback_window.md`.
+**Why:** so each scan covers a consistent recent time window regardless of mailbox
+size — previously a large mailbox only ever surfaced the latest ~100 matches,
+with no predictable time bound.
+**Touches:** `backend/app/core/config.py`, `backend/app/agent/loop.py`,
+`backend/tests/test_gmail.py`, `docs/plans/Scan_lookback_window.md`.
+**Verified:** `uv run ruff check` + `ruff format --check` clean; `uv run pytest`
+→ 41 passed (2 new). No live network in tests.
+**Follow-ups:** history synthesis (identify a subscription once, derive payment
+history from cadence) — would revisit the 100-candidate cap / pagination.
+
 ## 2026-06-20 — Top-level README + contributor guide (chore/readme)
 
 **What:** Added a human-facing `README.md` at the repo root (there was none —

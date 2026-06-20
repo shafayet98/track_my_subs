@@ -8,7 +8,7 @@ The Anthropic client is passed in so tests can inject a fake (no network).
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
@@ -106,7 +106,10 @@ async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
 
             refresh_token = decrypt_token(account.oauth_refresh_token_encrypted)
             gmail = GmailClient.from_refresh_token(refresh_token)
-            candidates = await run_in_threadpool(gmail.search_candidates)
+            # Time-based window: only candidates from the last N days. max_results
+            # stays a safety cap (a 14-day window is far smaller than all-time).
+            after = datetime.now(UTC) - timedelta(days=settings.scan_lookback_days)
+            candidates = await run_in_threadpool(gmail.search_candidates, after=after)
 
             ctx = ScanContext(
                 db=db,
