@@ -56,26 +56,32 @@ jobs:
           docker push "${REPO}:${GITHUB_SHA}"
           docker push "${REPO}:latest"
 
-      - name: CDK deploy (app stacks, pinned to this image)
-        working-directory: infra
-        run: |
-          uv sync
-          uv run cdk deploy \
-            TrackMySubs-Network TrackMySubs-Ecr TrackMySubs-Data \
-            TrackMySubs-Backend TrackMySubs-Frontend \
-            --require-approval never -c imageTag="${GITHUB_SHA}"
-
-      - name: Run DB migrations (one-off ECS task) + wait for service stable
+      # Migrate BEFORE rolling out the new code. The service is still on the old
+      # image here, so the migration must be backward-compatible (additive) — the
+      # old code keeps serving against the migrated schema until cdk deploy rolls
+      # it. This closes the window where new code would hit a not-yet-migrated
+      # schema (e.g. a column the new model references but the DB lacks).
+      - name: Run DB migrations on the new image (one-off ECS task, pre-rollout)
         run: |
           set -euo pipefail
+          REPO="${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
           CLUSTER=$(aws ecs list-clusters --query "clusterArns[?contains(@,'TrackMySubs')]|[0]" --output text)
           SVC=$(aws ecs list-services --cluster "$CLUSTER" --query "serviceArns[0]" --output text)
-          read -r TASKDEF SUBNETS SG < <(aws ecs describe-services --cluster "$CLUSTER" --services "$SVC" \
+          read -r CUR_TD SUBNETS SG < <(aws ecs describe-services --cluster "$CLUSTER" --services "$SVC" \
             --query "services[0].[taskDefinition, join(',', networkConfiguration.awsvpcConfiguration.subnets), networkConfiguration.awsvpcConfiguration.securityGroups[0]]" \
             --output text)
-          # Migrations are expected to be backward-compatible (cdk deploy already
-          # rolled the service onto the new image before this step).
-          TASK=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASKDEF" --launch-type FARGATE \
+          # Register a one-off task-def revision identical to the live one but on the
+          # NEW image, so `alembic upgrade head` runs the new code's migrations.
+          aws ecs describe-task-definition --task-definition "$CUR_TD" \
+            --query 'taskDefinition' --output json > /tmp/td.json
+          jq --arg IMG "${REPO}:${GITHUB_SHA}" '
+            .containerDefinitions[0].image = $IMG
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy)
+          ' /tmp/td.json > /tmp/td-migrate.json
+          MIG_TD=$(aws ecs register-task-definition --cli-input-json file:///tmp/td-migrate.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          TASK=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$MIG_TD" --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}" \
             --overrides '{"containerOverrides":[{"name":"web","command":["alembic","upgrade","head"]}]}' \
             --query "tasks[0].taskArn" --output text)
@@ -84,6 +90,18 @@ jobs:
             --query "tasks[0].containers[0].exitCode" --output text)
           echo "migration exit code: $CODE"
           test "$CODE" = "0"
+
+      - name: CDK deploy (app stacks, pinned to this image) + wait for service stable
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          uv sync
+          uv run cdk deploy \
+            TrackMySubs-Network TrackMySubs-Ecr TrackMySubs-Data \
+            TrackMySubs-Backend TrackMySubs-Frontend \
+            --require-approval never -c imageTag="${GITHUB_SHA}"
+          CLUSTER=$(aws ecs list-clusters --query "clusterArns[?contains(@,'TrackMySubs')]|[0]" --output text)
+          SVC=$(aws ecs list-services --cluster "$CLUSTER" --query "serviceArns[0]" --output text)
           aws ecs wait services-stable --cluster "$CLUSTER" --services "$SVC"
 
       - name: Build & deploy SPA
