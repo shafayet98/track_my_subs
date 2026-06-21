@@ -4,6 +4,7 @@ Asserts the loop terminates on finish/end_turn, on a refusal, and on the
 iteration cap, and that a tool call writes a correctly-scoped row.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -246,3 +247,50 @@ async def test_scan_job_scans_all_accounts(session, make_user, monkeypatch):
     # Summary aggregates both, prefixed with the mailbox address.
     assert "a@example.com:" in scan.summary
     assert "b@example.com:" in scan.summary
+
+
+async def test_scan_job_logs_exception_on_failure(session, make_user, monkeypatch, caplog):
+    """A failing scan logs the traceback (keyed by scan id) and marks the run failed."""
+    user = await make_user("boom@example.com")
+    account = EmailAccount(
+        user_id=user["user_id"],
+        provider="gmail",
+        email_address="boom@example.com",
+        oauth_refresh_token_encrypted="enc",
+    )
+    scan = ScanRun(user_id=user["user_id"], status="running")
+    session.add_all([account, scan])
+    await session.commit()
+    await session.refresh(scan)
+
+    class _FakeGmail:
+        @classmethod
+        def from_refresh_token(cls, _token):
+            return cls()
+
+        def search_candidates(self, *, after=None):
+            raise RuntimeError("gmail boom")
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("app.agent.loop.SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr("app.agent.loop.decrypt_token", lambda _enc: "tok")
+    monkeypatch.setattr("app.agent.loop.GmailClient", _FakeGmail)
+    monkeypatch.setattr("app.agent.loop.get_anthropic_client", lambda: object())
+
+    with caplog.at_level(logging.ERROR, logger="app.agent.loop"):
+        await run_scan_job(scan.id, user["user_id"])
+
+    await session.refresh(scan)
+    assert scan.status == "failed"
+    assert scan.summary == "Scan failed due to an internal error."
+    # The traceback was logged, keyed by scan id, with the underlying cause.
+    records = [r for r in caplog.records if str(scan.id) in r.getMessage()]
+    assert records, "expected a log record naming the scan id"
+    assert records[0].exc_info is not None
+    assert "gmail boom" in caplog.text

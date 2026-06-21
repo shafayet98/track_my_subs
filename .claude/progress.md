@@ -17,6 +17,39 @@ The format for each entry:
 
 ---
 
+## 2026-06-21 — CD: migrate before rollout + log swallowed scan failures (fix/cd-migrate-before-rollout-and-scan-logging, #25)
+
+**What:** Fixed a deploy-window race surfaced by a real failed scan. After #18
+deployed, CD rolled the ECS service onto the new image **first** and ran
+migrations ~2 min later, so new code briefly queried `subscriptions.trial_end_date`
+before migration `0002` added it (`UndefinedColumnError`) — a scan in that window
+failed. **CD (`cd.yml`):** now migrates **before** rollout. The new image is
+already in ECR, so the step derives a one-off task-def revision from the live
+service's current task definition (via `describe-task-definition` + `jq`, swapping
+only the image to `${GITHUB_SHA}`), runs `alembic upgrade head` on it, gates on
+exit 0 — *then* `cdk deploy` rolls the service and waits services-stable. Additive
+migrations stay backward-compatible with the still-running old code, so
+migrate-first closes the window (expand/contract). **Backend (`agent/loop.py`):**
+`run_scan_job` previously swallowed the exception with only a generic summary, so
+the failure was invisible in logs; it now `logger.exception("scan %s failed",
+scan_run_id)` before setting the failed status (DB/API errors carry message ids at
+most — no email bodies/PII, per `.claude/rules/security.md`). Test: `run_scan_job`
+logs the traceback keyed by scan id and marks the run failed (Gmail/Anthropic
+mocked). Plan: `docs/plans/CD_migrate_before_rollout_and_scan_logging.md`.
+Closes #25.
+**Why:** a user's scan failed during the #18 deploy; the root cause (migrate-after-
+rollout) and the silent failure path both needed fixing so it can't recur and is
+diagnosable next time.
+**Touches:** `.github/workflows/cd.yml`, `backend/app/agent/loop.py`,
+`backend/tests/test_agent_loop.py`,
+`docs/plans/CD_migrate_before_rollout_and_scan_logging.md`.
+**Verified:** `uv run ruff check` + `ruff format --check` clean; `uv run pytest`
+→ 59 passed (1 new); `cd.yml` valid YAML. CD ordering verified by review (next
+merge exercises it live).
+**Follow-ups:** for non-additive (contract) migrations the expand/contract split
+must be done by hand across two deploys — migrate-first only covers additive
+changes; an optional manual-approval gate before prod rollout.
+
 ## 2026-06-21 — Renewal & free-trial alerts: capture + detection (feat/renewal-trial-alerts, #18)
 
 **What:** Stage A of proactive notifications (issue #18) — the capture and

@@ -7,6 +7,7 @@ The Anthropic client is passed in so tests can inject a fake (no network).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
@@ -21,6 +22,8 @@ from app.core.security import decrypt_token
 from app.integrations.anthropic_client import get_anthropic_client
 from app.integrations.gmail import GmailClient
 from app.models import EmailAccount, ScanRun
+
+logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 25
 
@@ -143,6 +146,10 @@ async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
             scan.summary = "\n\n".join(summaries) or None
             scan.status = "succeeded" if all_completed else "failed"
         except Exception:
+            # Log the traceback so failures are diagnosable (DB/API errors carry
+            # message ids at most — no email bodies/PII). The user sees a generic
+            # summary; the detail lands in the logs, keyed by scan id.
+            logger.exception("scan %s failed", scan_run_id)
             scan.status = "failed"
             scan.summary = "Scan failed due to an internal error."
         finally:
