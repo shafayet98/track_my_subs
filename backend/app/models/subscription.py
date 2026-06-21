@@ -26,6 +26,8 @@ class Subscription(Base, TimestampMixin):
     currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="active", nullable=False)
     next_payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Date a free trial converts to a paid plan (the convert-to amount is `amount`).
+    trial_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     payments: Mapped[list["Payment"]] = relationship(  # noqa: F821
