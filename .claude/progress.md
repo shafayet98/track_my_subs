@@ -17,6 +17,36 @@ The format for each entry:
 
 ---
 
+## 2026-06-21 — Scan all accounts + remove the 100-email cap (feat/scan-all-accounts-no-cap, #23)
+
+**What:** Made a scan comprehensive in two dimensions. **Part A** — dropped the
+100-candidate cap in `GmailClient.search_candidates`: it now pages through the
+**entire** lookback window following `nextPageToken` (500 ids/page internally,
+just the batch size — not a ceiling), keeping `format=metadata` so no bodies are
+pulled during triage. Removed the `max_results` argument. **Part B** —
+`run_scan_job` now iterates **every** connected Gmail account (was the first row
+only): per account it decrypts that mailbox's token, builds its own
+`GmailClient`, runs the agent loop with a `ScanContext` scoped to that mailbox
+(a message id is only valid with its own token), then aggregates
+`emails_scanned` / `subscriptions_found` and joins per-account summaries
+(prefixed with the mailbox address); status is `succeeded` only if every account
+completed, and `last_synced_at` is set per account. So AWS bills sitting in a
+second inbox now show up. Tests (Gmail mocked, no network): pagination across
+pages in `search_candidates`, multi-account aggregation in `run_scan_job`, and
+the dropped-cap call site updated. Plan:
+`docs/plans/Scan_all_accounts_no_cap.md`. Closes #23.
+**Why:** issue #23 — coverage (which mailboxes) and completeness (no cap) were
+both limited; only one inbox was scanned and only its first 100 matches.
+**Touches:** `backend/app/integrations/gmail.py`, `backend/app/agent/loop.py`,
+`backend/tests/test_gmail.py`, `backend/tests/test_agent_loop.py`,
+`docs/plans/Scan_all_accounts_no_cap.md`.
+**Verified:** `uv run ruff check` + `ruff format --check` clean; `uv run pytest`
+→ 44 passed (2 new). No live Gmail/LLM network in tests.
+**Follow-ups:** subscription dedup / merchant-name normalization in
+`upsert_subscription` (more candidates + multiple inboxes make duplicate rows
+like "Anthropic (Claude Pro)" vs "Anthropic Claude Pro" more likely); an
+optional high safety bound on candidates if a very busy mailbox proves costly.
+
 ## 2026-06-21 — Frontend redesign + 2-month scan window (feat/frontend-redesign, #20)
 
 **What:** Redesigned the SPA to a warm cream/coral, monospace-accented look (per
