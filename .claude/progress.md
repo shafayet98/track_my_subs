@@ -17,6 +17,29 @@ The format for each entry:
 
 ---
 
+## 2026-06-21 — CD: grant ecs:RegisterTaskDefinition to the deploy role (fix/cd-register-taskdef-permission, #26 follow-up)
+
+**What:** Fixed CD, which #26 broke on first run. #26's migrate-before-rollout step
+registers a one-off ECS task-def revision (cloned from the live one, image swapped
+to the new SHA) so `alembic upgrade head` runs on the new image pre-rollout — but
+the `github-actions-deploy` role lacked `ecs:RegisterTaskDefinition`, so the step
+failed with `AccessDeniedException` (before `cdk deploy`, so prod was untouched —
+it kept running the previous image). Added `ecs:RegisterTaskDefinition` to the
+role's ECS policy statement in `cicd_stack.py` (the needed `iam:PassRole`, scoped
+to `ecs-tasks.amazonaws.com`, was already granted). Since `TrackMySubs-Cicd` is
+intentionally not deployed by CD, this was applied out-of-band
+(`cdk deploy TrackMySubs-Cicd`) to unblock the pipeline; this commit makes the
+stack source match. Plan: `docs/plans/CD_register_taskdef_permission.md`.
+**Why:** the migrate-before-rollout fix (#26) couldn't run without the registration
+permission; main's CD was red.
+**Touches:** `infra/stacks/cicd_stack.py`,
+`docs/plans/CD_register_taskdef_permission.md`.
+**Verified:** `ruff check` clean; `cdk synth TrackMySubs-Cicd` includes
+`ecs:RegisterTaskDefinition`; stack deployed (DeployRole policy updated); CD
+re-run exercises the migration step end-to-end.
+**Follow-ups:** the one-off migration task-def revisions accumulate in ECS
+(harmless/free) — could deregister old revisions later if it gets noisy.
+
 ## 2026-06-21 — CD: migrate before rollout + log swallowed scan failures (fix/cd-migrate-before-rollout-and-scan-logging, #25)
 
 **What:** Fixed a deploy-window race surfaced by a real failed scan. After #18
