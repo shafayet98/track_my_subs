@@ -78,7 +78,10 @@ class CicdStack(Stack):
                 resources=[f"arn:aws:ecr:{region}:{account}:repository/track-my-subs-api"],
             )
         )
-        # ECS: discover the service + run the one-off migration task.
+        # ECS: discover the service + run the one-off migration task. The
+        # migration runs pre-rollout on the new image, so we register a one-off
+        # task-def revision (cloned from the live one, image swapped) — hence
+        # RegisterTaskDefinition.
         role.add_to_policy(
             iam.PolicyStatement(
                 actions=[
@@ -86,13 +89,14 @@ class CicdStack(Stack):
                     "ecs:ListServices",
                     "ecs:DescribeServices",
                     "ecs:DescribeTaskDefinition",
+                    "ecs:RegisterTaskDefinition",
                     "ecs:RunTask",
                     "ecs:DescribeTasks",
                 ],
                 resources=["*"],
             )
         )
-        # Let RunTask pass the task + execution roles to ECS.
+        # Let RegisterTaskDefinition / RunTask pass the task + execution roles to ECS.
         role.add_to_policy(
             iam.PolicyStatement(
                 actions=["iam:PassRole"],
