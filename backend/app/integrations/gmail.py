@@ -39,6 +39,11 @@ CANDIDATE_QUERY = (
 # almost certainly boilerplate/quoted threads.
 MAX_BODY_CHARS = 20_000
 
+# Gmail's messages.list returns at most 500 ids per page. We page through the
+# whole window (no total cap), so this is just the per-request batch size to
+# minimise round-trips — not a ceiling on candidates.
+_LIST_PAGE_SIZE = 500
+
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
@@ -181,48 +186,54 @@ class GmailClient:
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         return cls(service)
 
-    def search_candidates(
-        self,
-        *,
-        after: datetime | None = None,
-        max_results: int = 100,
-    ) -> list[EmailCandidate]:
+    def search_candidates(self, *, after: datetime | None = None) -> list[EmailCandidate]:
         """Heuristic narrowing → lightweight candidates (id/from/subject/date).
 
-        Uses ``format=metadata`` so no body is fetched during triage.
+        Pages through the **entire** window (following ``nextPageToken``) — no
+        fixed cap. Uses ``format=metadata`` so no body is fetched during triage.
         """
         query = CANDIDATE_QUERY
         if after is not None:
             query = f"{query} after:{after.strftime('%Y/%m/%d')}"
 
-        listing = (
-            self._service.users()
-            .messages()
-            .list(userId="me", q=query, maxResults=max_results)
-            .execute()
-        )
         candidates: list[EmailCandidate] = []
-        for ref in listing.get("messages", []):
-            msg = (
+        page_token: str | None = None
+        while True:
+            listing = (
                 self._service.users()
                 .messages()
-                .get(
+                .list(
                     userId="me",
-                    id=ref["id"],
-                    format="metadata",
-                    metadataHeaders=["From", "Subject", "Date"],
+                    q=query,
+                    maxResults=_LIST_PAGE_SIZE,
+                    pageToken=page_token,
                 )
                 .execute()
             )
-            headers = msg.get("payload", {}).get("headers", [])
-            candidates.append(
-                EmailCandidate(
-                    message_id=msg["id"],
-                    sender=_header(headers, "From"),
-                    subject=_header(headers, "Subject"),
-                    date=_header(headers, "Date"),
+            for ref in listing.get("messages", []):
+                msg = (
+                    self._service.users()
+                    .messages()
+                    .get(
+                        userId="me",
+                        id=ref["id"],
+                        format="metadata",
+                        metadataHeaders=["From", "Subject", "Date"],
+                    )
+                    .execute()
                 )
-            )
+                headers = msg.get("payload", {}).get("headers", [])
+                candidates.append(
+                    EmailCandidate(
+                        message_id=msg["id"],
+                        sender=_header(headers, "From"),
+                        subject=_header(headers, "Subject"),
+                        date=_header(headers, "Date"),
+                    )
+                )
+            page_token = listing.get("nextPageToken")
+            if not page_token:
+                break
         return candidates
 
     def get_email(self, message_id: str) -> EmailContent:

@@ -95,36 +95,53 @@ async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
         if scan is None:
             return
         try:
-            account = await db.scalar(
-                select(EmailAccount).where(
-                    EmailAccount.user_id == user_id,
-                    EmailAccount.provider == "gmail",
+            accounts = (
+                await db.scalars(
+                    select(EmailAccount).where(
+                        EmailAccount.user_id == user_id,
+                        EmailAccount.provider == "gmail",
+                    )
                 )
-            )
-            if account is None or not account.oauth_refresh_token_encrypted:
+            ).all()
+            accounts = [a for a in accounts if a.oauth_refresh_token_encrypted]
+            if not accounts:
                 raise RuntimeError("no connected Gmail account")
 
-            refresh_token = decrypt_token(account.oauth_refresh_token_encrypted)
-            gmail = GmailClient.from_refresh_token(refresh_token)
-            # Time-based window: only candidates from the last N days. max_results
-            # stays a safety cap (a 14-day window is far smaller than all-time).
+            # Time-based window: only candidates from the last N days.
             after = datetime.now(UTC) - timedelta(days=settings.scan_lookback_days)
-            candidates = await run_in_threadpool(gmail.search_candidates, after=after)
 
-            ctx = ScanContext(
-                db=db,
-                user_id=user_id,
-                scan_run_id=scan_run_id,
-                gmail=gmail,
-                candidates=candidates,
-            )
-            result = await run_agent_loop(ctx, get_anthropic_client())
+            emails_scanned = 0
+            subscriptions_found = 0
+            summaries: list[str] = []
+            all_completed = True
 
-            scan.emails_scanned = ctx.emails_scanned
-            scan.subscriptions_found = ctx.subscriptions_found
-            scan.summary = ctx.summary
-            scan.status = "succeeded" if result == "completed" else "failed"
-            account.last_synced_at = datetime.now(UTC)
+            # One agent loop per mailbox: a message id is only valid with its own
+            # account's token, so each ScanContext stays scoped to one mailbox.
+            for account in accounts:
+                refresh_token = decrypt_token(account.oauth_refresh_token_encrypted)
+                gmail = GmailClient.from_refresh_token(refresh_token)
+                candidates = await run_in_threadpool(gmail.search_candidates, after=after)
+
+                ctx = ScanContext(
+                    db=db,
+                    user_id=user_id,
+                    scan_run_id=scan_run_id,
+                    gmail=gmail,
+                    candidates=candidates,
+                )
+                result = await run_agent_loop(ctx, get_anthropic_client())
+
+                emails_scanned += ctx.emails_scanned
+                subscriptions_found += ctx.subscriptions_found
+                if ctx.summary:
+                    summaries.append(f"{account.email_address}: {ctx.summary}")
+                all_completed = all_completed and result == "completed"
+                account.last_synced_at = datetime.now(UTC)
+
+            scan.emails_scanned = emails_scanned
+            scan.subscriptions_found = subscriptions_found
+            scan.summary = "\n\n".join(summaries) or None
+            scan.status = "succeeded" if all_completed else "failed"
         except Exception:
             scan.status = "failed"
             scan.summary = "Scan failed due to an internal error."

@@ -179,3 +179,70 @@ async def test_scan_job_searches_within_lookback_window(session, make_user, monk
     expected = datetime.now(UTC) - timedelta(days=settings.scan_lookback_days)
     assert captured["after"] is not None
     assert abs((captured["after"] - expected).total_seconds()) < 60
+
+
+async def test_scan_job_scans_all_accounts(session, make_user, monkeypatch):
+    """run_scan_job iterates every connected account and aggregates the counts."""
+    user = await make_user("multi@example.com")
+    acct1 = EmailAccount(
+        user_id=user["user_id"],
+        provider="gmail",
+        email_address="a@example.com",
+        oauth_refresh_token_encrypted="enc1",
+    )
+    acct2 = EmailAccount(
+        user_id=user["user_id"],
+        provider="gmail",
+        email_address="b@example.com",
+        oauth_refresh_token_encrypted="enc2",
+    )
+    scan = ScanRun(user_id=user["user_id"], status="running")
+    session.add_all([acct1, acct2, scan])
+    await session.commit()
+    await session.refresh(scan)
+
+    seen_tokens: list[str] = []
+
+    class _FakeGmail:
+        def __init__(self, token):
+            self.token = token
+
+        @classmethod
+        def from_refresh_token(cls, token):
+            seen_tokens.append(token)
+            return cls(token)
+
+        def search_candidates(self, *, after=None):
+            return []
+
+    async def _fake_loop(ctx, client, **kwargs):
+        # Each account contributes to the aggregate.
+        ctx.emails_scanned = 2
+        ctx.subscriptions_found = 1
+        ctx.summary = "found stuff"
+        return "completed"
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("app.agent.loop.SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr("app.agent.loop.decrypt_token", lambda enc: enc)
+    monkeypatch.setattr("app.agent.loop.GmailClient", _FakeGmail)
+    monkeypatch.setattr("app.agent.loop.get_anthropic_client", lambda: object())
+    monkeypatch.setattr("app.agent.loop.run_agent_loop", _fake_loop)
+
+    await run_scan_job(scan.id, user["user_id"])
+
+    # Both mailboxes were opened with their own decrypted token.
+    assert sorted(seen_tokens) == ["enc1", "enc2"]
+    await session.refresh(scan)
+    assert scan.emails_scanned == 4
+    assert scan.subscriptions_found == 2
+    assert scan.status == "succeeded"
+    # Summary aggregates both, prefixed with the mailbox address.
+    assert "a@example.com:" in scan.summary
+    assert "b@example.com:" in scan.summary

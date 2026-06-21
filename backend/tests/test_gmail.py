@@ -31,12 +31,18 @@ class _Exec:
 
 
 class _Messages:
-    def __init__(self, list_resp, get_map):
+    def __init__(self, list_resp, get_map, pages=None):
         self._list_resp = list_resp
         self._get_map = get_map
+        self._pages = pages or {}  # pageToken -> list response
+        self.list_calls = []
 
     def list(self, **kwargs):
         self.list_kwargs = kwargs
+        self.list_calls.append(kwargs)
+        token = kwargs.get("pageToken")
+        if token is not None:
+            return _Exec(self._pages[token])
         return _Exec(self._list_resp)
 
     def get(self, *, userId, id, **kwargs):  # noqa: N803 (Gmail API param name)
@@ -52,8 +58,8 @@ class _Users:
 
 
 class _FakeService:
-    def __init__(self, list_resp, get_map):
-        self._messages = _Messages(list_resp, get_map)
+    def __init__(self, list_resp, get_map, pages=None):
+        self._messages = _Messages(list_resp, get_map, pages)
 
     def users(self):
         return _Users(self._messages)
@@ -73,7 +79,7 @@ def test_search_candidates_returns_lightweight_rows():
     }
     client = GmailClient(_FakeService(list_resp, get_map))
 
-    candidates = client.search_candidates(max_results=50)
+    candidates = client.search_candidates()
 
     assert [c.message_id for c in candidates] == ["m1", "m2"]
     assert candidates[0].sender == "Netflix <info@netflix.com>"
@@ -81,6 +87,26 @@ def test_search_candidates_returns_lightweight_rows():
     assert candidates[1].date == "D2"
     # Triage must use metadata format — never pull bodies to narrow.
     assert client._service.users().messages().list_kwargs["q"]
+
+
+def test_search_candidates_paginates_all_pages():
+    # Page 1 points at page 2 via nextPageToken; page 2 is the last page.
+    list_resp = {"messages": [{"id": "m1"}], "nextPageToken": "p2"}
+    pages = {"p2": {"messages": [{"id": "m2"}, {"id": "m3"}]}}
+    get_map = {
+        mid: {"id": mid, "payload": {"headers": _headers(f"{mid}@x.com", "s", "d")}}
+        for mid in ("m1", "m2", "m3")
+    }
+    client = GmailClient(_FakeService(list_resp, get_map, pages=pages))
+
+    candidates = client.search_candidates()
+
+    # All pages accumulated — no 100-cap, no dropped page.
+    assert [c.message_id for c in candidates] == ["m1", "m2", "m3"]
+    # It actually followed the nextPageToken into page 2.
+    calls = client._service.users().messages().list_calls
+    assert calls[0]["pageToken"] is None
+    assert calls[1]["pageToken"] == "p2"
 
 
 def test_search_candidates_empty_inbox():
