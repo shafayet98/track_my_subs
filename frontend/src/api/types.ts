@@ -71,3 +71,10 @@ export interface SubscriptionDetail extends SubscriptionCard {
   confidence: number | null;
   payments: Payment[];
 }
+
+export interface NotificationPreferences {
+  renewals_enabled: boolean;
+  trial_conversions_enabled: boolean;
+  missed_payments_enabled: boolean;
+  lead_time_days: number;
+}

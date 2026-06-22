@@ -122,10 +122,31 @@ Key files and decisions:
    `trial_end_date`. Anthropic/Gmail mocked.
 6. `ruff check` + `ruff format --check` + `pytest` green. `progress.md` entry.
 
-**Stage B (second PR):** SES client + CDK (SES identity, IAM, EventBridge
+**Stage B (second PR) — DONE:** SES client + CDK (SES identity, IAM, EventBridge
 schedule → worker ECS task) + worker entrypoint that sends and records
 `Notification` rows + prefs API + frontend settings screen + tests
 (SES mocked; `cdk synth` green).
+
+Delivered:
+1. `integrations/ses_client.py` — thin SES `send_email` wrapper (creds from the
+   task role; never logged).
+2. `services/notifications.py` — prefs get/upsert, email rendering (parsed facts
+   only), `run_user_alerts` (detect → send → record), `run_all_alerts` (batch).
+3. `worker/alerts.py` — `python -m app.worker.alerts` entrypoint.
+4. `api/notifications.py` + `schemas/notifications.py` — `/notifications/
+   preferences` GET/PUT; wired in `main.py`.
+5. Frontend — `SettingsPage` (toggles + lead time), api client/types, route,
+   nav link.
+6. `infra/stacks/backend_stack.py` — SES domain identity (DKIM via hosted zone),
+   `ses:SendEmail` task-role grant, EventBridge daily rule → worker ECS RunTask.
+7. Config: `AWS_REGION`, `SES_SENDER`, `APP_BASE_URL` (+ `.env.example`); `boto3`
+   dependency.
+8. Tests `test_notifications_worker.py` / `test_notifications_api.py` (SES
+   mocked). `ruff` + `pytest` (68) + `cdk synth` + `npm run build` green.
+
+> Note: real sends need SES production access (out of sandbox) and the
+> `alerts@shafcode.xyz` sender live; until then `SES_SENDER` is empty and the
+> worker logs+skips.
 
 ## Acceptance criteria
 

@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import ConnectAccountPage from "./pages/ConnectAccountPage";
 import SubscriptionDetailPage from "./pages/SubscriptionDetailPage";
+import SettingsPage from "./pages/SettingsPage";
 import type { ReactNode } from "react";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/connect" element={<ConnectAccountPage />} />
         <Route path="/subscriptions/:id" element={<SubscriptionDetailPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
