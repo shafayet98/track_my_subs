@@ -5,6 +5,7 @@ import type {
   ConnectUrl,
   DashboardSummary,
   EmailAccount,
+  NotificationPreferences,
   ScanRun,
   SubscriptionCard,
   SubscriptionDetail,
@@ -90,4 +91,13 @@ export const api = {
   listSubscriptions: () => request<SubscriptionCard[]>("/subscriptions"),
   getSubscription: (id: string) =>
     request<SubscriptionDetail>(`/subscriptions/${id}`),
+
+  // --- notification preferences ---
+  getNotificationPreferences: () =>
+    request<NotificationPreferences>("/notifications/preferences"),
+  updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) =>
+    request<NotificationPreferences>("/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify(prefs),
+    }),
 };

@@ -3,7 +3,8 @@
 The task pulls its image from ECR (built/pushed separately, so synth/deploy need
 no local Docker), reads DB creds + app secrets from Secrets Manager, runs in
 private subnets, and is allowed to reach RDS. Scans run in-process in the API
-(Phase 4 background tasks); a dedicated worker service is a later change.
+(Phase 4 background tasks). A scheduled Fargate task (EventBridge → RunTask)
+runs the daily alert worker from the same image, allowed to send via SES.
 """
 
 from aws_cdk import CfnOutput, Duration, Stack
@@ -13,12 +14,22 @@ from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_logs as logs
 from aws_cdk import aws_rds as rds
 from aws_cdk import aws_route53 as route53
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import aws_ses as ses
 from constructs import Construct
 
 from stacks.data_stack import DB_NAME
+
+# Sender for alert emails. A domain identity (DKIM-signed via the hosted zone)
+# sends from any address on the domain without per-address verification.
+ALERT_SENDER = "alerts@shafcode.xyz"
+APP_BASE_URL = "https://shafcode.xyz"
 
 # Custom domain for the API (audrie98). The hosted zone for shafcode.xyz lives in
 # this account; the ACM cert is validated via DNS in that zone. Referenced by
@@ -136,6 +147,71 @@ class BackendStack(Stack):
             from_port=5432,
             to_port=5432,
             description="API tasks to Postgres",
+        )
+
+        # --- Alert worker: SES identity + daily scheduled Fargate task --------
+
+        # Verified sender. Public-hosted-zone identity wires DKIM CNAMEs in the
+        # zone automatically, so mail from the domain is signed and deliverable.
+        ses.EmailIdentity(
+            self,
+            "AlertSenderIdentity",
+            identity=ses.Identity.public_hosted_zone(zone),
+        )
+
+        # The worker reuses the API image but overrides the command to run the
+        # alert pass once and exit. DB creds come from the same secret; the
+        # entrypoint composes DATABASE_URL. SES creds come from the task role.
+        worker_task = ecs.FargateTaskDefinition(
+            self, "AlertWorkerTask", cpu=256, memory_limit_mib=512
+        )
+        worker_task.add_container(
+            "AlertWorker",
+            image=ecs.ContainerImage.from_ecr_repository(repository, image_tag),
+            command=["python", "-m", "app.worker.alerts"],
+            environment={
+                "DB_HOST": database.db_instance_endpoint_address,
+                "DB_PORT": database.db_instance_endpoint_port,
+                "DB_NAME": DB_NAME,
+                "AWS_REGION": self.region,
+                "SES_SENDER": ALERT_SENDER,
+                "APP_BASE_URL": APP_BASE_URL,
+            },
+            secrets={
+                "DB_USER": ecs.Secret.from_secrets_manager(db_secret, "username"),
+                "DB_PASSWORD": ecs.Secret.from_secrets_manager(db_secret, "password"),
+            },
+            logging=ecs.LogDrivers.aws_logs(
+                stream_prefix="alert-worker",
+                log_retention=logs.RetentionDays.ONE_MONTH,
+            ),
+        )
+        worker_task.add_to_task_role_policy(
+            iam.PolicyStatement(
+                actions=["ses:SendEmail", "ses:SendRawEmail"],
+                resources=["*"],
+            )
+        )
+
+        # Run the worker in the same SG as the API so the existing RDS ingress
+        # rule covers it (one-way backend → data dependency stays intact).
+        worker_sg = service.service.connections.security_groups[0]
+        events.Rule(
+            self,
+            "DailyAlertSchedule",
+            # 14:00 UTC daily — a fixed off-peak hour; lead-time windowing in the
+            # worker means the exact minute doesn't matter.
+            schedule=events.Schedule.cron(minute="0", hour="14"),
+            targets=[
+                targets.EcsTask(
+                    cluster=cluster,
+                    task_definition=worker_task,
+                    subnet_selection=ec2.SubnetSelection(
+                        subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+                    ),
+                    security_groups=[worker_sg],
+                )
+            ],
         )
 
         CfnOutput(self, "EcrRepositoryUri", value=repository.repository_uri)

@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     # first scan reliably catches at least one billing cycle for monthly subs.
     scan_lookback_days: int = Field(default=60, alias="SCAN_LOOKBACK_DAYS")
 
+    # Notifications (renewal/trial/missed-payment alert emails via SES).
+    # Sender must be a verified SES identity. An empty sender disables sending
+    # (the worker logs and skips) so local/dev runs never hit SES.
+    aws_region: str = Field(default="ap-southeast-2", alias="AWS_REGION")
+    ses_sender: str = Field(default="", alias="SES_SENDER")
+    # Public app URL used in email links ("manage your subscriptions").
+    app_base_url: str = Field(default="http://localhost:5173", alias="APP_BASE_URL")
+
 
 @lru_cache
 def get_settings() -> Settings:

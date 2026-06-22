@@ -17,6 +17,42 @@ The format for each entry:
 
 ---
 
+## 2026-06-23 — Renewal & trial alerts: delivery (#18 stage B) (feat/renewal-trial-alerts-delivery)
+
+**What:** Stage B of #18 — wires the Stage-A detection core to real delivery.
+A daily Fargate worker (`python -m app.worker.alerts`) loads each user's
+subscriptions/payments/prefs/sent-log, calls the pure `due_notifications`, sends
+one summary email per user via SES, and records a `Notification` row per event so
+nothing is sent twice (records only after a successful send, so failures retry).
+Added `integrations/ses_client.py` (thin SES wrapper; creds from the task role,
+never logged), `services/notifications.py` (prefs get/upsert, email rendering,
+per-user + batch run), a `/api/notifications/preferences` GET/PUT router, and a
+frontend Settings screen (per-type toggles + lead-time days) with nav link.
+Infra: `BackendStack` now creates an SES domain identity (DKIM via the hosted
+zone), an `ses:SendEmail` task-role grant, and an EventBridge daily (14:00 UTC)
+rule → ECS `RunTask` of the worker, reusing the API SG so the existing RDS
+ingress covers it. Emails carry parsed facts only (merchant/amount/date).
+**Why:** completes #18 — the dashboard now actively warns users before money
+moves (renewals, trial conversions, missed payments).
+**Touches:** `backend/app/integrations/ses_client.py`,
+`backend/app/services/notifications.py`, `backend/app/worker/alerts.py`,
+`backend/app/api/notifications.py`, `backend/app/schemas/notifications.py`,
+`backend/app/main.py`, `backend/app/core/config.py`, `backend/pyproject.toml`,
+`infra/stacks/backend_stack.py`, `frontend/src/pages/SettingsPage.tsx`,
+`frontend/src/api/{client,types}.ts`, `frontend/src/{App,components/Layout}.tsx`,
+`backend/tests/test_notifications_{worker,api}.py`,
+`docs/plans/Renewal_And_Trial_Alerts.md`.
+**Verified:** `ruff check` + `ruff format --check` clean; `pytest` 70 passed
+(SES stubbed in worker tests; `test_ses_client.py` drives the real boto3 path via
+`moto`, no network); `cdk synth` green; `npm run build` green. Also proved real
+end-to-end delivery once by hand: verified two sandbox identities and sent through
+`SesClient.from_settings()` → SES returned a MessageId, mail arrived.
+**Follow-ups:** SES is still in the **sandbox** — before real users, request
+production access and make the `alerts@shafcode.xyz` domain identity (DKIM via the
+hosted zone, already in the stack) live; until then mail from a non-domain sender
+lands in spam (auth, not content). Add a DMARC record on `shafcode.xyz` at launch.
+Price-increase alerts (separate issue) can reuse this delivery channel.
+
 ## 2026-06-21 — CD: grant ecs:RegisterTaskDefinition to the deploy role (fix/cd-register-taskdef-permission, #26 follow-up)
 
 **What:** Fixed CD, which #26 broke on first run. #26's migrate-before-rollout step

@@ -13,6 +13,9 @@ export function Layout() {
           <NavLink to="/" end className="nav-link">
             Dashboard
           </NavLink>
+          <NavLink to="/settings" className="nav-link">
+            Settings
+          </NavLink>
           <Link to="/connect" className="btn">
             Connect
           </Link>
