@@ -17,6 +17,23 @@ The format for each entry:
 
 ---
 
+## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
+
+**What:** Added `docs/local-app-email-access.md` capturing the design discussion
+on how a fully local, self-hosted version of the app could let users connect
+their email without going through Google's `gmail.readonly` OAuth verification +
+CASA gauntlet. Documents the two viable paths — (1) IMAP + App Password (no OAuth
+at all, provider-agnostic, recommended) and (2) bring-your-own OAuth client per
+user — with trade-offs and a recommendation, plus a note that only the
+email-fetching layer changes, not the agent.
+**Why:** Records the decision rationale for a potential local-first direction so
+it isn't lost in chat; entry point for any future spike on IMAP-based ingestion.
+**Touches:** `docs/local-app-email-access.md`.
+**Follow-ups:** If we pursue Path 1, spike an `email_imap.py` to replace the
+Gmail-API client and rework the connect-account flow + token storage.
+
+---
+
 ## 2026-06-23 — Renewal & trial alerts: delivery (#18 stage B) (feat/renewal-trial-alerts-delivery)
 
 **What:** Stage B of #18 — wires the Stage-A detection core to real delivery.
