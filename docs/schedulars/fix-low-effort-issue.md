@@ -11,8 +11,13 @@ independently verified, and logged.
 
 ## Requirements
 
-1. **Pick the issue.** From the repo's open issues labeled `effort:low`, choose
-   the **newest** one. If there are none, stop — nothing to do.
+1. **Pick the issue.** From the repo's open issues labeled `effort:low`,
+   **excluding any labeled `area:infra`**, choose the **newest** one. If there
+   are none, stop — nothing to do.
+
+   > Skip `area:infra` issues entirely: they need AWS / cloud-console / DNS
+   > access this agent does not have, so it cannot meaningfully fix them. Leave
+   > those for a human (or a local session with AWS credentials).
 2. **Branch.** Create a `claude/<short-slug>` branch for the work.
 3. **Investigate** the issue first — understand the root cause and what the fix
    needs to touch before planning. (You may use `/investigate`.)
