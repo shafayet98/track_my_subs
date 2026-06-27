@@ -41,6 +41,25 @@ async def test_login_ok_and_wrong_password(client, make_user):
     assert bad.status_code == 401
 
 
+async def test_register_mixed_case_email_is_lowercased_and_login_succeeds(client, make_user):
+    user = await make_user("User@Example.com", password="password123")
+    me = await client.get("/api/auth/me", headers=user["headers"])
+    assert me.json()["email"] == "user@example.com"
+
+    login = await client.post(
+        "/api/auth/login", json={"email": "user@example.com", "password": "password123"}
+    )
+    assert login.status_code == 200
+
+
+async def test_register_duplicate_email_different_case_conflicts(client, make_user):
+    await make_user("Dup2@Example.com")
+    r = await client.post(
+        "/api/auth/register", json={"email": "dup2@example.com", "password": "password123"}
+    )
+    assert r.status_code == 409
+
+
 async def test_login_unknown_user(client):
     r = await client.post(
         "/api/auth/login", json={"email": "ghost@b.com", "password": "whatever123"}
