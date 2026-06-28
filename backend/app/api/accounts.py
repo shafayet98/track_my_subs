@@ -11,7 +11,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import create_oauth_state, encrypt_token, verify_oauth_state
 from app.integrations import gmail
+from app.integrations.email_imap import ImapClient
 from app.models import EmailAccount, User
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -35,6 +36,12 @@ class EmailAccountOut(BaseModel):
 
 class ConnectUrlOut(BaseModel):
     authorization_url: str
+
+
+class ImapConnectIn(BaseModel):
+    email_address: EmailStr
+    app_password: str = Field(min_length=1)
+    imap_host: str | None = None
 
 
 @router.get("", response_model=list[EmailAccountOut])
@@ -91,3 +98,51 @@ async def gmail_callback(
         url=f"{settings.frontend_origin}/?gmail=connected",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/imap/connect", response_model=EmailAccountOut)
+async def imap_connect(
+    body: ImapConnectIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EmailAccount:
+    """Connect a mailbox via IMAP + App Password (no OAuth).
+
+    Validates the credentials with a real login before storing the app password
+    encrypted at rest. See .claude/rules/security.md for the credential trade-off.
+    """
+    host = (body.imap_host or "").strip() or settings.imap_default_host
+    email_address = str(body.email_address)
+    client = ImapClient.from_credentials(host, email_address, body.app_password)
+
+    try:
+        await run_in_threadpool(client.check_login)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not connect to the mailbox. Check the email, app password, and host.",
+        ) from exc
+
+    encrypted = encrypt_token(body.app_password)
+    account = await db.scalar(
+        select(EmailAccount).where(
+            EmailAccount.user_id == user.id,
+            EmailAccount.provider == "imap",
+            EmailAccount.email_address == email_address,
+        )
+    )
+    if account is None:
+        account = EmailAccount(
+            user_id=user.id,
+            provider="imap",
+            email_address=email_address,
+            imap_host=host,
+            app_password_encrypted=encrypted,
+        )
+        db.add(account)
+    else:
+        account.imap_host = host
+        account.app_password_encrypted = encrypted
+    await db.commit()
+    await db.refresh(account)
+    return account

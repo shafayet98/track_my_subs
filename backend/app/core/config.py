@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     )
     gmail_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
 
+    # IMAP + App Password path (no OAuth). Default host suits Gmail; the connect
+    # endpoint accepts an override for other providers.
+    imap_default_host: str = Field(default="imap.gmail.com", alias="IMAP_DEFAULT_HOST")
+
     # App
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
 

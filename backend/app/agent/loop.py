@@ -20,6 +20,8 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.security import decrypt_token
 from app.integrations.anthropic_client import get_anthropic_client
+from app.integrations.email_common import EmailReader
+from app.integrations.email_imap import ImapClient
 from app.integrations.gmail import GmailClient
 from app.models import EmailAccount, ScanRun
 
@@ -88,8 +90,23 @@ async def run_agent_loop(ctx: ScanContext, client, *, max_iterations: int = MAX_
     return "max_iterations"
 
 
+def _has_credential(account: EmailAccount) -> bool:
+    return bool(account.app_password_encrypted or account.oauth_refresh_token_encrypted)
+
+
+def _build_email_client(account: EmailAccount) -> EmailReader:
+    """Pick the reader for an account: IMAP when an app password is set, else Gmail."""
+    if account.app_password_encrypted:
+        return ImapClient.from_credentials(
+            account.imap_host or settings.imap_default_host,
+            account.email_address,
+            decrypt_token(account.app_password_encrypted),
+        )
+    return GmailClient.from_refresh_token(decrypt_token(account.oauth_refresh_token_encrypted))
+
+
 async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
-    """Background job: Gmail candidate search → agent loop → update the scan run.
+    """Background job: candidate search → agent loop → update the scan run.
 
     Runs in its own DB session (the request session is already closed).
     """
@@ -99,16 +116,11 @@ async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
             return
         try:
             accounts = (
-                await db.scalars(
-                    select(EmailAccount).where(
-                        EmailAccount.user_id == user_id,
-                        EmailAccount.provider == "gmail",
-                    )
-                )
+                await db.scalars(select(EmailAccount).where(EmailAccount.user_id == user_id))
             ).all()
-            accounts = [a for a in accounts if a.oauth_refresh_token_encrypted]
+            accounts = [a for a in accounts if _has_credential(a)]
             if not accounts:
-                raise RuntimeError("no connected Gmail account")
+                raise RuntimeError("no connected email account")
 
             # Time-based window: only candidates from the last N days.
             after = datetime.now(UTC) - timedelta(days=settings.scan_lookback_days)
@@ -118,18 +130,17 @@ async def run_scan_job(scan_run_id: uuid.UUID, user_id: uuid.UUID) -> None:
             summaries: list[str] = []
             all_completed = True
 
-            # One agent loop per mailbox: a message id is only valid with its own
-            # account's token, so each ScanContext stays scoped to one mailbox.
+            # One agent loop per mailbox: a message id is only valid against its
+            # own account's client, so each ScanContext stays scoped to one mailbox.
             for account in accounts:
-                refresh_token = decrypt_token(account.oauth_refresh_token_encrypted)
-                gmail = GmailClient.from_refresh_token(refresh_token)
-                candidates = await run_in_threadpool(gmail.search_candidates, after=after)
+                email_client = _build_email_client(account)
+                candidates = await run_in_threadpool(email_client.search_candidates, after=after)
 
                 ctx = ScanContext(
                     db=db,
                     user_id=user_id,
                     scan_run_id=scan_run_id,
-                    gmail=gmail,
+                    gmail=email_client,
                     candidates=candidates,
                 )
                 result = await run_agent_loop(ctx, get_anthropic_client())

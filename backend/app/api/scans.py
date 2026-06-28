@@ -36,16 +36,14 @@ async def start_scan(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ScanRun:
-    account = await db.scalar(
-        select(EmailAccount).where(
-            EmailAccount.user_id == user.id,
-            EmailAccount.provider == "gmail",
-        )
+    accounts = (await db.scalars(select(EmailAccount).where(EmailAccount.user_id == user.id))).all()
+    has_credential = any(
+        a.app_password_encrypted or a.oauth_refresh_token_encrypted for a in accounts
     )
-    if account is None or not account.oauth_refresh_token_encrypted:
+    if not has_credential:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connect a Gmail account before scanning.",
+            detail="Connect an email account before scanning.",
         )
 
     scan = ScanRun(user_id=user.id, status="running", started_at=datetime.now(UTC))

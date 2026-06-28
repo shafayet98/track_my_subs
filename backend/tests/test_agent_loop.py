@@ -294,3 +294,60 @@ async def test_scan_job_logs_exception_on_failure(session, make_user, monkeypatc
     assert records, "expected a log record naming the scan id"
     assert records[0].exc_info is not None
     assert "gmail boom" in caplog.text
+
+
+async def test_scan_job_uses_imap_client_for_app_password_account(session, make_user, monkeypatch):
+    """An account with an app password scans via the IMAP client, not OAuth/Gmail."""
+    user = await make_user("imapscan@example.com")
+    account = EmailAccount(
+        user_id=user["user_id"],
+        provider="imap",
+        email_address="imapscan@gmail.com",
+        imap_host="imap.gmail.com",
+        app_password_encrypted="enc-pw",
+    )
+    scan = ScanRun(user_id=user["user_id"], status="running")
+    session.add_all([account, scan])
+    await session.commit()
+    await session.refresh(scan)
+
+    built: dict = {}
+
+    class _FakeImap:
+        @classmethod
+        def from_credentials(cls, host, email_address, app_password):
+            built.update(host=host, email_address=email_address, app_password=app_password)
+            return cls()
+
+        def search_candidates(self, *, after=None):
+            return []
+
+    def _no_gmail(*_a, **_k):
+        raise AssertionError("Gmail client must not be built for an IMAP account")
+
+    async def _fake_loop(ctx, client, **kwargs):
+        return "completed"
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr("app.agent.loop.SessionLocal", lambda: _SessionCtx())
+    monkeypatch.setattr("app.agent.loop.decrypt_token", lambda _enc: "app-pw")
+    monkeypatch.setattr("app.agent.loop.ImapClient", _FakeImap)
+    monkeypatch.setattr("app.agent.loop.GmailClient", _no_gmail)
+    monkeypatch.setattr("app.agent.loop.get_anthropic_client", lambda: object())
+    monkeypatch.setattr("app.agent.loop.run_agent_loop", _fake_loop)
+
+    await run_scan_job(scan.id, user["user_id"])
+
+    assert built == {
+        "host": "imap.gmail.com",
+        "email_address": "imapscan@gmail.com",
+        "app_password": "app-pw",
+    }
+    await session.refresh(scan)
+    assert scan.status == "succeeded"

@@ -18,7 +18,13 @@ class EmailAccount(Base, TimestampMixin):
     provider: Mapped[str] = mapped_column(String(32), default="gmail", nullable=False)
     email_address: Mapped[str] = mapped_column(String(320), nullable=False)
     # OAuth refresh token, encrypted at rest (see core.security.encrypt_token).
+    # Set for the Gmail-API/OAuth path.
     oauth_refresh_token_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
+    # IMAP host + App Password (encrypted at rest) for the IMAP path. The app
+    # password is a full-mailbox credential we only ever read with — see
+    # .claude/rules/security.md.
+    imap_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    app_password_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="email_accounts")  # noqa: F821
