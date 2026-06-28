@@ -12,6 +12,33 @@ async def test_start_scan_requires_connected_account(client, make_user):
     assert r.status_code == 400
 
 
+async def test_start_scan_accepts_imap_app_password_account(
+    client, make_user, session, monkeypatch
+):
+    """An IMAP (app-password) account satisfies the scan gate, like a Gmail one."""
+    import app.api.scans as scans_mod
+
+    async def fake_job(scan_id, user_id):
+        return None
+
+    monkeypatch.setattr(scans_mod, "run_scan_job", fake_job)
+
+    user = await make_user("imapgate@example.com")
+    session.add(
+        EmailAccount(
+            user_id=user["user_id"],
+            provider="imap",
+            email_address="imapgate@gmail.com",
+            imap_host="imap.gmail.com",
+            app_password_encrypted=encrypt_token("app-pw"),
+        )
+    )
+    await session.commit()
+
+    r = await client.post("/api/scans", headers=user["headers"])
+    assert r.status_code == 202
+
+
 async def test_start_scan_creates_run_and_schedules_job(client, make_user, session, monkeypatch):
     import app.api.scans as scans_mod
 

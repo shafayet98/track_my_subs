@@ -4,6 +4,17 @@ This app reads people's email. Treat that access as a privilege with hard limits
 
 - **Gmail scope is read-only** (`gmail.readonly`). Never request write/send/delete
   scopes.
+- **IMAP App Password path (conscious trade-off).** The local/self-hosted IMAP
+  path (`integrations/email_imap.py`) avoids Google's restricted-scope
+  verification by reading mail with a user-generated App Password instead of
+  OAuth. An app password is a **full-mailbox** credential — broader than
+  `gmail.readonly`'s narrow read-only scope — so this is a deliberate step back,
+  taken only because we never write: the mailbox is opened with `readonly=True`
+  (IMAP `EXAMINE`) and bodies are fetched with `BODY.PEEK`, so scanning never
+  sets `\Seen` or mutates the mailbox. The app password is encrypted at rest
+  (same `TOKEN_ENCRYPTION_KEY` path as OAuth tokens), server-side only, and never
+  logged. All other rules below (parsed facts only, no raw bodies, tenant
+  isolation) apply unchanged.
 - **Store parsed facts only.** Never persist raw email bodies or full headers.
   The agent may read a body in-memory during a scan; it is discarded afterward.
   We store `source_message_id` for provenance/dedup — not content.

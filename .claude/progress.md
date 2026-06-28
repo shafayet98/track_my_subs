@@ -17,6 +17,34 @@ The format for each entry:
 
 ---
 
+## 2026-06-28 — IMAP + App Password email access (feat/imap-email-access)
+
+**What:** Implements Path 1 from `docs/local-app-email-access.md`: read mail over
+IMAP with a user-generated App Password instead of Gmail OAuth, so a local/
+self-hosted deploy avoids Google's restricted-scope verification + CASA. Adds a
+provider-agnostic `EmailReader` protocol and shared email types
+(`integrations/email_common.py`), a new `integrations/email_imap.py` (`ImapClient`
+— X-GM-RAW search on Gmail hosts, per-keyword SUBJECT union elsewhere; read-only
+via `EXAMINE` + `BODY.PEEK`), and a `POST /accounts/imap/connect` endpoint that
+validates the login then stores the app password encrypted at rest. The scan job
+now selects accounts by credential and builds the matching client, so the Gmail
+OAuth path keeps working alongside IMAP. The agent loop, tool schemas, and prompts
+are unchanged. Amends `.claude/rules/security.md` to document the deliberate
+full-mailbox-credential trade-off.
+**Why:** Advances the local-first direction noted in the email-access doc —
+removes the Google verification blocker and makes the tracker work with any IMAP
+provider (Outlook/Yahoo/Fastmail), not just Gmail.
+**Touches:** `backend/app/integrations/{email_common,email_imap,gmail}.py`,
+`backend/app/api/{accounts,scans}.py`, `backend/app/agent/{loop,tools}.py`,
+`backend/app/models/email_account.py`, `backend/app/core/config.py`,
+`backend/alembic/versions/0003_imap_credentials.py`,
+`backend/tests/{test_imap,test_accounts_imap,test_agent_loop}.py`,
+`.claude/rules/security.md`, `docs/plans/Imap_email_access.md`.
+**Follow-ups:** Frontend connect-form UI for the IMAP path (email/app-password/
+host). Optional: per-provider host presets and IDLE-based incremental sync.
+
+---
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion

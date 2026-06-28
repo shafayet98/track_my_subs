@@ -19,12 +19,21 @@ import base64
 from dataclasses import dataclass
 from datetime import datetime
 
-from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from app.core.config import settings
+from app.integrations.email_common import (
+    MAX_BODY_CHARS,
+    EmailCandidate,
+    EmailContent,
+    html_to_text,
+    normalize_text,
+)
+
+# Re-exported for callers that import these from this module historically.
+__all__ = ["GmailClient", "OAuthResult", "EmailCandidate", "EmailContent", "MAX_BODY_CHARS"]
 
 # Heuristic pre-filter: subscription/billing signals. The LLM does the real
 # triage; this just narrows the candidate set so token spend tracks candidates,
@@ -34,10 +43,6 @@ CANDIDATE_QUERY = (
     '"payment received" OR "your plan" OR renewal OR '
     '"payment failed" OR "payment due"'
 )
-
-# Cap the plaintext we hand the agent — receipts are short; anything longer is
-# almost certainly boilerplate/quoted threads.
-MAX_BODY_CHARS = 20_000
 
 # Gmail's messages.list returns at most 500 ids per page. We page through the
 # whole window (no total cap), so this is just the per-request batch size to
@@ -117,23 +122,6 @@ def _credentials_from_refresh_token(refresh_token: str) -> Credentials:
     )
 
 
-@dataclass
-class EmailCandidate:
-    message_id: str
-    sender: str
-    subject: str
-    date: str
-
-
-@dataclass
-class EmailContent:
-    message_id: str
-    sender: str
-    subject: str
-    date: str
-    body: str
-
-
 def _header(headers: list[dict], name: str) -> str:
     for h in headers:
         if h.get("name", "").lower() == name.lower():
@@ -167,11 +155,10 @@ def _extract_plaintext(payload: dict) -> str:
     if plain:
         text = "\n".join(plain)
     elif html:
-        text = BeautifulSoup("\n".join(html), "html.parser").get_text(separator="\n")
+        text = html_to_text("\n".join(html))
     else:
         text = ""
-    text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
-    return text[:MAX_BODY_CHARS]
+    return normalize_text(text)
 
 
 class GmailClient:

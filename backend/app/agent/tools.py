@@ -17,7 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.gmail import EmailCandidate, GmailClient
+from app.integrations.email_common import EmailCandidate, EmailReader
 from app.models import Payment, Subscription
 
 # Deterministic, append-only order (prompt caching depends on it).
@@ -156,7 +156,9 @@ class ScanContext:
     db: AsyncSession
     user_id: uuid.UUID
     scan_run_id: uuid.UUID
-    gmail: GmailClient
+    # The mailbox reader for this scan — Gmail-API or IMAP, both satisfy the
+    # EmailReader protocol. Named ``gmail`` for continuity with existing tools.
+    gmail: EmailReader
     candidates: list[EmailCandidate] = field(default_factory=list)
     emails_scanned: int = 0
     subscriptions_found: int = 0
