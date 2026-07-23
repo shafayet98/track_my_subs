@@ -17,6 +17,18 @@ The format for each entry:
 
 ---
 
+## 2026-07-23 — Fix case-insensitive email auth (claude/email-case-insensitive)
+
+**What:** Normalized email addresses to lowercase at the Pydantic schema boundary
+(`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py`) using a
+`field_validator(mode="after")`. Fixes issue #34: registering `User@Example.com`
+then `user@example.com` now correctly returns 409, and logging in with different
+case than used at registration now succeeds. Added two tests:
+`test_login_case_insensitive` and `test_register_duplicate_different_case`.
+**Why:** Security + correctness fix for issue #34 (effort:low, priority:high).
+**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`, `docs/plans/Email_case_insensitive_auth.md`.
+**Follow-ups:** Existing users with mixed-case emails in the DB are not migrated; acceptable for current dev stage.
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion
