@@ -17,22 +17,32 @@ The format for each entry:
 
 ---
 
-## 2026-07-22 — Fix email case-sensitivity in auth (claude/email-case-normalization)
+## 2026-08-11 — Fix case-sensitive email handling on register/login (claude/email-case-normalization, #34)
 
-**What:** Added a Pydantic v2 `field_validator` (`mode="before"`) on the `email`
-field of both `RegisterRequest` and `LoginRequest` in
-`backend/app/schemas/auth.py`. The validator strips whitespace and lowercases the
-email before Pydantic's `EmailStr` validation runs, ensuring all stored emails and
-all lookup queries use the canonical lowercase form. Added two tests in
-`backend/tests/test_auth.py` covering: register mixed-case then login lowercase
-succeeds; registering the same email with different case returns 409.
-**Why:** Fixes issue #34 — login failed with 401 when case differed from
-registration, and two accounts could be created for the same address differing
-only by case.
-**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`,
-`docs/plans/Email_case_normalization.md`.
-**Follow-ups:** A `lower(email)` functional unique index in Postgres would add
-DB-level enforcement as a safety net; deferred until production deployment.
+**What:** Fixed issue #34 — emails were compared case-sensitively, so registering
+as `User@Example.com` and logging in as `user@example.com` returned 401, and
+registering the same email in a different case created a second account instead
+of returning 409. Added a Pydantic `field_validator('email', mode='before')` to
+both `RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py` that
+calls `.lower()` before `EmailStr` validation. This means the stored value and
+every lookup key are always lowercase, so the existing case-sensitive DB unique
+index on `users.email` effectively enforces case-insensitive uniqueness with no
+schema change. Added Alembic migration `0003_lowercase_emails` (data-only): first
+deduplicates any same-lowercased-email rows introduced by the old bug (keeping
+the oldest user via `ROW_NUMBER() OVER (PARTITION BY LOWER(email) ORDER BY
+created_at)`), then normalizes all stored emails with
+`UPDATE users SET email = LOWER(email)`. Added three tests: mixed-case register →
+lowercase login → 200, lowercase register → uppercase login → 200, and
+duplicate-different-case register → 409.
+**Why:** closes #34 — both reported failure modes (login case mismatch and
+duplicate account creation) are security/UX regressions that needed fixing.
+**Touches:** `backend/app/schemas/auth.py`,
+`backend/alembic/versions/0003_lowercase_emails.py`,
+`backend/tests/test_auth.py`, `docs/plans/Email_case_normalization.md`.
+**Follow-ups:** None. Existing mixed-case emails in production are handled by the
+migration's dedup + normalize steps.
+
+---
 
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
@@ -481,8 +491,7 @@ subscription cards + detail) renders.
 schema change this phase).
 **Follow-ups:** Phase 6 — the React frontend. Currency normalization across
 merchants stays deferred (we sum raw `amount` and surface a representative
-`currency`).
-
+`currency`).\n
 ## 2026-06-13 — The agent (feat/agent)
 
 **What:** Implemented Phase 4 — the agentic scan. New `agent/` package:
