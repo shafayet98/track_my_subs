@@ -17,6 +17,26 @@ The format for each entry:
 
 ---
 
+## 2026-06-27 — Fix: case-insensitive email on register/login (#34) (claude/case-insensitive-email)
+
+**What:** Auth previously compared emails case-sensitively (`User.email == body.email`)
+and stored them as-typed, so logging in with a different case than used at
+registration failed `401`, and registering the same email in a different case
+created a second account instead of `409`. Added a Pydantic `field_validator`
+on `email` in both `RegisterRequest` and `LoginRequest`
+(`backend/app/schemas/auth.py`) that lowercases the value before it reaches
+`backend/app/api/auth.py`, so storage and both lookup paths now use the
+normalized form.
+**Why:** Fixes #34 — prevents duplicate accounts differing only by email case
+and lets users log in regardless of the case they registered with.
+**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`.
+**Follow-ups:** Pre-existing rows registered before this fix (if any) keep
+their original case and are not backfilled — no migration was needed for new
+writes, but an existing mixed-case account could still collide with a new
+registration post-fix. Worth a one-off backfill/dedup if that ever surfaces.
+
+---
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion
