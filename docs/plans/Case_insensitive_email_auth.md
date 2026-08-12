@@ -1,48 +1,44 @@
-# Case-insensitive email auth (fixes #34)
+# Case-insensitive email auth
 
 ## Goal
 
-Authentication currently treats email addresses case-sensitively:
-`backend/app/api/auth.py` compares `User.email == body.email` directly, and
-the email is stored exactly as typed. This means logging in with a different
-case than used at registration fails with `401`, and registering the same
-email in a different case creates a second account instead of being rejected
-with `409`.
+Fix issue #34: email addresses are compared case-sensitively on register and
+login, allowing duplicate accounts and causing 401s when the user types a
+different case than they registered with.
 
 ## Scope
 
-- Normalize email to lowercase at the schema boundary so both registration
-  storage and login/duplicate lookups use the normalized form.
-- Out of scope: no DB migration (existing rows aren't backfilled), no change
-  to the `users.email` unique index (already case-sensitive at the DB level,
-  but normalization at the boundary means all *new* writes are lowercase, so
-  the unique constraint is effectively case-insensitive going forward).
+**In scope:** Normalize email in `RegisterRequest` and `LoginRequest` Pydantic
+schemas; add covering tests.
+
+**Out of scope:** Database migration (no production data to backfill), changes
+to `auth.py` endpoint logic, DB-level case-insensitive index.
 
 ## Approach
 
-Add a Pydantic `field_validator` on the `email` field in both
-`RegisterRequest` and `LoginRequest` (`backend/app/schemas/auth.py`) that
-lowercases the value. Since `auth.py` (`register`/`login`) already reads
-`body.email` for both the DB query and the stored value, no changes are
-needed there — normalization at the schema layer covers both paths.
+Add a Pydantic v2 `field_validator` with `mode="after"` on the `email` field
+in both request schemas. Using `mode="after"` means `EmailStr` validates the
+format first; then we lowercase the already-validated string. This makes
+`body.email` always lowercase by the time any endpoint code touches it — no
+changes to `auth.py` are required.
 
-`UserOut.email` is left as-is (just reflects whatever is stored, which will
-be lowercase after this change).
+Key files:
+- `backend/app/schemas/auth.py` — add `field_validator` import and
+  `normalize_email` validator on `RegisterRequest` and `LoginRequest`.
+- `backend/tests/test_auth.py` — add two new tests.
 
 ## Steps
 
-1. Add a `field_validator` to `RegisterRequest.email` and `LoginRequest.email`
-   in `backend/app/schemas/auth.py` that lowercases the input.
-2. Add tests in `backend/tests/test_auth.py`:
-   - Register with mixed-case email, login with lowercase succeeds.
-   - Register with mixed-case email, then register again with a different
-     case of the same email returns `409`.
-3. Run the full backend test suite.
+1. Edit `backend/app/schemas/auth.py` — add `field_validator` and
+   `normalize_email` to both request models.
+2. Add tests:
+   - `test_register_mixed_case_login_lowercase_succeeds`
+   - `test_register_duplicate_different_case_conflicts`
+3. Run full test suite.
 
 ## Acceptance criteria
 
-- Registering `User@Example.com` then logging in with `user@example.com`
-  succeeds.
-- Registering `user@example.com` after `User@Example.com` was already
-  registered returns `409`.
-- Full test suite passes.
+- `User@Example.com` registered; `user@example.com` login → 200.
+- `dup@Example.com` registered; re-register as `DUP@example.com` → 409.
+- All existing tests pass.
+- No DB migration required.

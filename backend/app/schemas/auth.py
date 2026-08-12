@@ -8,20 +8,20 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     name: str | None = Field(default=None, max_length=200)
 
-    @field_validator("email")
+    @field_validator("email", mode="after")
     @classmethod
-    def normalize_email(cls, value: str) -> str:
-        return value.lower()
+    def normalize_email(cls, v: str) -> str:
+        return v.lower()
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-    @field_validator("email")
+    @field_validator("email", mode="after")
     @classmethod
-    def normalize_email(cls, value: str) -> str:
-        return value.lower()
+    def normalize_email(cls, v: str) -> str:
+        return v.lower()
 
 
 class TokenResponse(BaseModel):
