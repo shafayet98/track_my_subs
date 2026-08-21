@@ -17,6 +17,28 @@ The format for each entry:
 
 ---
 
+## 2026-08-21 — Fix email case-sensitivity on register/login (claude/email-case-normalisation)
+
+**What:** Fixed issue #34 — auth treated email addresses case-sensitively. A
+Pydantic `field_validator("email", mode="before")` on both `RegisterRequest` and
+`LoginRequest` lowercases the email before `EmailStr` validates it, so the stored
+value and both lookups always use the normalised form. Registering
+`User@Example.com` now stores `user@example.com`; logging in with any case
+variation returns 200; a duplicate registration in a different case correctly
+returns 409. Added Alembic migration `0003_lowercase_existing_emails` to
+lowercase any existing rows in the `users.email` column. Added 4 new auth tests
+covering mixed-case login, all-caps login, duplicate-case 409, and `/me`
+returning the normalised email.
+**Why:** Closes #34 — prevents users being locked out or creating duplicate
+accounts when they change capitalisation on login.
+**Touches:** `backend/app/schemas/auth.py`,
+`backend/alembic/versions/0003_lowercase_existing_emails.py`,
+`backend/tests/test_auth.py`, `docs/plans/Email_Case_Normalisation.md`.
+**Follow-ups:** Add a functional unique index `CREATE UNIQUE INDEX ON users
+(lower(email))` to enforce uniqueness at the DB level against out-of-band inserts.
+
+---
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion
