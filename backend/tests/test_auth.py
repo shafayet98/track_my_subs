@@ -52,3 +52,67 @@ async def test_me_requires_valid_token(client):
     assert (await client.get("/api/auth/me")).status_code == 401
     bad = await client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})
     assert bad.status_code == 401
+
+
+# --- Email case normalisation tests (issue #34) ---
+
+
+async def test_register_mixed_case_login_lowercase(client):
+    """Register with mixed-case email; login with lowercase should succeed."""
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "User@Example.com", "password": "password123"},
+    )
+    assert r.status_code == 201
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "user@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
+    assert "access_token" in login.json()
+
+
+async def test_register_lowercase_login_uppercase(client):
+    """Register with lowercase email; login with all-caps should succeed."""
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "user@example.com", "password": "password123"},
+    )
+    assert r.status_code == 201
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "USER@EXAMPLE.COM", "password": "password123"},
+    )
+    assert login.status_code == 200
+    assert "access_token" in login.json()
+
+
+async def test_register_duplicate_different_case_conflicts(client):
+    """Registering the same email in a different case must return 409."""
+    r1 = await client.post(
+        "/api/auth/register",
+        json={"email": "User@Example.com", "password": "password123"},
+    )
+    assert r1.status_code == 201
+
+    r2 = await client.post(
+        "/api/auth/register",
+        json={"email": "user@example.com", "password": "password456"},
+    )
+    assert r2.status_code == 409
+
+
+async def test_register_mixed_case_me_returns_lowercase(client):
+    """After registering with mixed case, /me returns the normalised lowercase email."""
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "User@Example.com", "password": "password123"},
+    )
+    assert r.status_code == 201
+    token = r.json()["access_token"]
+
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "user@example.com"
