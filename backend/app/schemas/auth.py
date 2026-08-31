@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class _EmailNormalMixin(BaseModel):
-    @field_validator("email", mode="before")
+    @field_validator("email", mode="before", check_fields=False)
     @classmethod
     def _normalise_email(cls, v: object) -> object:
         if isinstance(v, str):
