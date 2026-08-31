@@ -1,59 +1,50 @@
 # Email Case Normalization
 
-**Issue:** #34
-**Branch:** `claude/email-case-normalization`
-**Date:** 2026-08-11
-
 ## Goal
 
-Fix case-sensitive email handling that allowed two accounts to share the
-same email differing only by case, and that blocked logins when the case
-used at login differed from registration.
+Fix issue #34: email addresses are treated case-sensitively on register/login.
+Registering with `User@Example.com` and logging in with `user@example.com`
+fails with 401, and registering a duplicate email with different case creates
+a second account instead of returning 409.
 
 ## Scope
 
-- **In scope:** normalize emails to lowercase at the input boundary;
-  backfill existing stored emails via a data migration.
-- **Out of scope:** collation changes, schema/index changes, frontend
-  changes.
+- Normalize email to lowercase at the Pydantic schema boundary.
+- No DB migration needed (unique constraint already exists).
+- No changes to `api/auth.py` or the model layer.
+
+## Out of scope
+
+- Backfilling any existing mixed-case rows (dev-stage; no prod data).
+- Changes to the Gmail / OAuth email handling.
 
 ## Approach
 
-Add a Pydantic `field_validator('email', mode='before')` to both
-`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py`
-that calls `.lower()`. `mode='before'` fires before `EmailStr` coercion,
-so the normalized value is what gets stored and compared. The existing
-case-sensitive DB unique index on `users.email` then effectively enforces
-case-insensitive uniqueness with no schema change.
+Add a `_EmailNormalMixin(BaseModel)` in `backend/app/schemas/auth.py` with a
+`field_validator("email", mode="before")` that lowercases the full email string
+(with an `isinstance(v, str)` guard to let Pydantic produce clean validation
+errors for non-string inputs). Both `RegisterRequest` and `LoginRequest`
+inherit from it.
 
-Add Alembic migration `0003_lowercase_emails` (data-only — no column or
-constraint changes):
-
-1. **Dedup:** For any rows whose lowercased email collides with another
-   (possible because bug #34 allowed it), keep the oldest user
-   (`ORDER BY created_at ASC`) and delete the rest via
-   `ROW_NUMBER() OVER (PARTITION BY LOWER(email) ...)`. `ROW_NUMBER()` is
-   available in SQLite ≥ 3.25 (Python 3.12 bundles 3.39+) and all
-   supported PostgreSQL versions.
-2. **Normalize:** `UPDATE users SET email = LOWER(email)` on the
-   now-collision-free rows.
+Pydantic's `EmailStr` already lowercases the domain part (RFC 5321), but not
+the local part. The `mode="before"` validator runs first and normalizes the
+entire string.
 
 ## Steps
 
-1. Add `field_validator` to `RegisterRequest` and `LoginRequest` in
-   `backend/app/schemas/auth.py`.
-2. Write migration `backend/alembic/versions/0003_lowercase_emails.py`.
-3. Add three tests to `backend/tests/test_auth.py`:
-   - mixed-case register → lowercase login → 200
-   - lowercase register → uppercase login → 200 (symmetry)
-   - duplicate-different-case register → 409
-4. Run `uv run pytest` to confirm all tests pass.
+1. Update `backend/app/schemas/auth.py` — add `_EmailNormalMixin` and wire it
+   into `RegisterRequest` and `LoginRequest`.
+2. Update `backend/tests/test_auth.py` — add two tests:
+   - `test_register_mixed_case_login_lowercase`: register with `User@Example.com`,
+     login with `user@example.com`, expect 200 + token.
+   - `test_register_duplicate_different_case_conflicts`: register `User@Example.com`,
+     then register `user@example.com`, expect 409.
+3. Run full test suite: `cd backend && uv run pytest tests/`.
 
-## Acceptance Criteria
+## Acceptance criteria
 
-- `POST /auth/register` with `User@Example.com` stores `user@example.com`.
-- `POST /auth/login` with `user@example.com` succeeds after registering
-  `User@Example.com`.
-- `POST /auth/register` with `user@example.com` after `User@Example.com`
-  returns 409.
-- All existing tests continue to pass.
+- Login with lowercased email after registering with mixed-case email returns
+  200 with a token.
+- Registering an email that already exists in a different case returns 409.
+- All pre-existing tests continue to pass.
+- No DB migration is required.
