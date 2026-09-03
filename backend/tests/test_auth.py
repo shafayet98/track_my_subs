@@ -52,3 +52,23 @@ async def test_me_requires_valid_token(client):
     assert (await client.get("/api/auth/me")).status_code == 401
     bad = await client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})
     assert bad.status_code == 401
+
+
+async def test_register_mixed_case_login_lowercase(client, make_user):
+    """Registering with mixed-case email; login with lowercase must succeed."""
+    await make_user("User@Example.com")
+    r = await client.post(
+        "/api/auth/login", json={"email": "user@example.com", "password": "password123"}
+    )
+    assert r.status_code == 200
+    assert "access_token" in r.json()
+
+
+async def test_register_duplicate_different_case_conflicts(client, make_user):
+    """Registering an email that already exists in a different case must return 409."""
+    await make_user("User@Example.com")
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "user@example.com", "password": "password123"},
+    )
+    assert r.status_code == 409
