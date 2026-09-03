@@ -1,50 +1,49 @@
-# Email Case Normalization
+# Plan: Email case normalization (issue #34)
 
 ## Goal
 
-Fix issue #34: email addresses are treated case-sensitively on register/login.
-Registering with `User@Example.com` and logging in with `user@example.com`
-fails with 401, and registering a duplicate email with different case creates
-a second account instead of returning 409.
+Fix case-sensitive email handling in auth endpoints so that:
+- Emails are stored in lowercase regardless of how the user types them.
+- Login succeeds whether the user types `User@Example.com` or `user@example.com`.
+- Registering an email that already exists in a different case is rejected with 409.
+
+## Root cause
+
+`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py` pass `email`
+through as-typed. The DB lookup (`User.email == body.email`) is a literal string
+comparison, so case variants bypass both the duplicate-check and the login lookup.
 
 ## Scope
 
-- Normalize email to lowercase at the Pydantic schema boundary.
-- No DB migration needed (unique constraint already exists).
-- No changes to `api/auth.py` or the model layer.
-
-## Out of scope
-
-- Backfilling any existing mixed-case rows (dev-stage; no prod data).
-- Changes to the Gmail / OAuth email handling.
+- **In scope:** normalize email in `RegisterRequest` and `LoginRequest` schemas.
+- **Out of scope:** backfilling existing stored emails; any other model field.
 
 ## Approach
 
-Add a `_EmailNormalMixin(BaseModel)` in `backend/app/schemas/auth.py` with a
-`field_validator("email", mode="before")` that lowercases the full email string
-(with an `isinstance(v, str)` guard to let Pydantic produce clean validation
-errors for non-string inputs). Both `RegisterRequest` and `LoginRequest`
-inherit from it.
+Add a Pydantic v2 `field_validator("email", mode="after")` to both
+`RegisterRequest` and `LoginRequest` that returns `value.lower()`. Pydantic's
+`EmailStr` already validates format; the validator runs after that and lowercases
+the result. Because the normalized value is set on `body.email` before any
+DB interaction, no changes are needed in `auth.py`.
 
-Pydantic's `EmailStr` already lowercases the domain part (RFC 5321), but not
-the local part. The `mode="before"` validator runs first and normalizes the
-entire string.
+No migration is required — the schema change only affects new writes.
 
 ## Steps
 
-1. Update `backend/app/schemas/auth.py` — add `_EmailNormalMixin` and wire it
-   into `RegisterRequest` and `LoginRequest`.
-2. Update `backend/tests/test_auth.py` — add two tests:
-   - `test_register_mixed_case_login_lowercase`: register with `User@Example.com`,
-     login with `user@example.com`, expect 200 + token.
-   - `test_register_duplicate_different_case_conflicts`: register `User@Example.com`,
-     then register `user@example.com`, expect 409.
-3. Run full test suite: `cd backend && uv run pytest tests/`.
+1. In `backend/app/schemas/auth.py`:
+   - Import `field_validator` from `pydantic`.
+   - Add `@field_validator("email", mode="after") @classmethod def normalize_email(cls, v): return v.lower()` to `RegisterRequest`.
+   - Add the same validator to `LoginRequest`.
+
+2. In `backend/tests/test_auth.py`, add two tests:
+   - `test_register_mixed_case_login_lowercase`: register `MixedCase@Example.com`, then login with `mixedcase@example.com` → 200.
+   - `test_register_duplicate_different_case_conflicts`: register `User@Example.com`, then register `user@example.com` → 409.
+
+3. Run `pytest backend/tests/test_auth.py` (then the full suite).
 
 ## Acceptance criteria
 
-- Login with lowercased email after registering with mixed-case email returns
-  200 with a token.
-- Registering an email that already exists in a different case returns 409.
-- All pre-existing tests continue to pass.
-- No DB migration is required.
+- `test_register_mixed_case_login_lowercase` passes.
+- `test_register_duplicate_different_case_conflicts` passes.
+- All existing auth tests still pass.
+- Full test suite passes.
