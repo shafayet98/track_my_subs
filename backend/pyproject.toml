@@ -47,3 +47,12 @@ asyncio_mode = "auto"
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
+    "moto>=5.2.2",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]
