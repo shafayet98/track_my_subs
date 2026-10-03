@@ -10,8 +10,10 @@ class RegisterRequest(BaseModel):
 
     @field_validator("email", mode="before")
     @classmethod
-    def normalize_email(cls, v: str) -> str:
-        return v.lower()
+    def normalize_email(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -20,8 +22,10 @@ class LoginRequest(BaseModel):
 
     @field_validator("email", mode="before")
     @classmethod
-    def normalize_email(cls, v: str) -> str:
-        return v.lower()
+    def normalize_email(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
 
 class TokenResponse(BaseModel):

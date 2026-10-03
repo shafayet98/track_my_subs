@@ -1,50 +1,53 @@
-# Fix email case-sensitivity on register/login (Issue #34)
+# Fix email case-sensitivity on register/login
 
 ## Goal
 
-Normalize email addresses to lowercase at the schema boundary so that
-authentication is case-insensitive: `User@Example.com` and `user@example.com`
-are treated as the same identity.
+Normalize email addresses to lowercase at the input boundary so that:
+- Login succeeds regardless of the case used at registration time.
+- Registering an email that already exists under a different case returns `409`.
+
+Fixes Issue #34.
 
 ## Scope
 
-**In scope:**
-- Lowercase normalization of `email` on `RegisterRequest` and `LoginRequest`
-- Tests covering: mixed-case register → lowercase login succeeds; duplicate
-  registration with different case → 409
-
-**Out of scope:**
-- Database migration (the existing unique index on `users.email` is sufficient
-  once all writes go through the normalized schema)
-- Changes to the auth router (`auth.py`) — normalization at the schema layer
-  keeps the router clean
-- Existing production users with stored mixed-case emails (new project, no
-  production data at risk)
+- **In scope:** `backend/app/schemas/auth.py` — add Pydantic v2 `field_validator` on `email` in both `RegisterRequest` and `LoginRequest`.
+- **Out of scope:** DB migration (no existing data to backfill; project is pre-production), frontend changes, other endpoints.
 
 ## Approach
 
-Add a Pydantic v2 `@field_validator("email", mode="before")` to both
-`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py` that
-returns `v.lower()`. `mode="before"` ensures the value is lowercased before
-`EmailStr` validation runs, so format checks still apply to the normalized form.
+Add a `@field_validator("email", mode="before")` to both request schemas. Running in `mode="before"` means the value is lowercased before Pydantic's `EmailStr` validation fires, so the stored value and both DB lookups always use the normalized form.
 
-No changes to `auth.py`, no migration, no new models.
+The validator must guard against non-string input (Pydantic v2 `mode="before"` runs before coercion, so `None` or an integer can arrive). An unguarded `.lower()` on `None` raises `AttributeError` which Pydantic does **not** catch — this would return 500 instead of 422. Use an `isinstance` guard:
+
+```python
+@field_validator("email", mode="before")
+@classmethod
+def normalize_email(cls, v: object) -> object:
+    if isinstance(v, str):
+        return v.lower()
+    return v  # let EmailStr validation reject non-strings with a 422
+```
+
+Key files:
+- `backend/app/schemas/auth.py` — the only change needed.
+- `backend/tests/test_auth.py` — three new test cases.
+
+No changes to `backend/app/api/auth.py` are required because the router already uses `body.email` which will be normalized by the schema.
 
 ## Steps
 
-1. Create branch `claude/fix-email-case-sensitivity`
-2. Edit `backend/app/schemas/auth.py`: import `field_validator`, add
-   `normalize_email` validator to `RegisterRequest` and `LoginRequest`
-3. Add two tests to `backend/tests/test_auth.py`:
-   - `test_login_mixed_case_email_matches`
-   - `test_register_duplicate_different_case_conflicts`
-4. Run `uv run pytest` — all tests must pass
-5. Run `uv run ruff check` — must be clean
-6. Update `.claude/progress.md`, commit, push, open PR
+1. In `backend/app/schemas/auth.py`, import `field_validator` from pydantic and add `normalize_email` validators to `RegisterRequest` and `LoginRequest` using the `isinstance` guard above.
+2. In `backend/tests/test_auth.py`, add:
+   - `test_login_case_insensitive`: register with `User@Example.com`, log in with `user@example.com` — expect 200. Also hit `GET /auth/me` and assert `email == "user@example.com"` (verifies stored value is lowercased).
+   - `test_register_duplicate_email_different_case`: register `User@Example.com`, then register `user@example.com` — expect 409.
+   - `test_login_uppercase_email`: register `user@example.com`, log in with `USER@EXAMPLE.COM` — expect 200.
+3. Run the full test suite (`cd backend && uv run pytest`).
 
 ## Acceptance criteria
 
-- Registering `User@Example.com` then logging in with `user@example.com` → 200
-- Registering `user@example.com` then registering `User@Example.com` → 409
-- All existing tests still pass
-- `ruff check` + `ruff format --check` clean
+- `POST /auth/register` with `User@Example.com` stores `user@example.com` (confirmed via `/auth/me`).
+- `POST /auth/login` with `user@example.com` after registering `User@Example.com` returns 200.
+- `POST /auth/login` with `USER@EXAMPLE.COM` after registering `user@example.com` returns 200.
+- `POST /auth/register` with `user@example.com` after registering `User@Example.com` returns 409.
+- Non-string email (e.g. `null`) returns 422 not 500.
+- Full test suite passes (no regressions).
