@@ -17,6 +17,15 @@ The format for each entry:
 
 ---
 
+## 2026-10-03 — Fix email case-sensitivity on register/login (#34) (claude/fix-email-case-sensitivity)
+
+**What:** Added Pydantic v2 `field_validator` on the `email` field in both `RegisterRequest` and `LoginRequest` to normalize emails to lowercase at the input boundary. Uses an `isinstance` guard so non-string inputs are rejected with 422 rather than causing a 500. Added three new tests: mixed-case register + lowercase login succeeds, uppercase login succeeds, and registering a duplicate email with different case returns 409.
+**Why:** Fixes Issue #34 — auth was fully case-sensitive, causing login failures and allowing duplicate accounts that differed only by email casing.
+**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`, `docs/plans/Fix_email_case_sensitivity.md`.
+**Follow-ups:** Consider a functional unique index on `LOWER(email)` in Postgres to enforce case-insensitivity at the DB level as a hardening step.
+
+---
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion
