@@ -1,42 +1,39 @@
-# Email case normalization
+# Email Case Normalization
 
 ## Goal
 
-Fix issue #34: authentication treats email addresses case-sensitively. Registering
-`User@Example.com` and `user@example.com` creates two accounts; login with a
-different case than was used at registration fails with 401.
+Fix email case-sensitivity bugs in register and login. Registering with
+`User@Example.com` and logging in with `user@example.com` currently fails
+(401), and registering `user@example.com` after `User@Example.com` silently
+creates a second account instead of returning 409.
 
 ## Scope
 
-**In scope:**
-- `backend/app/schemas/auth.py` — add `field_validator` to lowercase `email` on
-  both `RegisterRequest` and `LoginRequest`.
-- `backend/tests/test_auth.py` — add two tests covering the fixed behavior.
-
-**Out of scope:**
-- No DB migration. The fix normalizes all new writes; existing mixed-case rows
-  are a known deferred risk called out as acceptable for this task.
-- No changes to `backend/app/api/auth.py` — the boundary fix is sufficient.
+- **In scope:** normalize email to lowercase at the Pydantic schema boundary.
+- **Out of scope:** DB migration for existing rows (development stage; no
+  production users with mixed-case emails). If the app is ever deployed with
+  existing mixed-case data, a one-time `UPDATE users SET email = LOWER(email)`
+  migration must run before deploying this fix.
 
 ## Approach
 
-Add a Pydantic v2 `field_validator` with `mode="before"` on the `email` field in
-both request schemas. `mode="before"` runs before `EmailStr` validation so the
-raw string is lowercased first.
+Add `@field_validator("email", mode="before")` + `@classmethod` to both
+`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py`. The
+`mode="before"` ensures the lowercased string is what Pydantic's `EmailStr`
+validates and what reaches the DB query/insert — no router changes needed.
 
 ## Steps
 
-1. Save this plan.
-2. Add `field_validator` to `RegisterRequest` and `LoginRequest`.
-3. Add two tests: cross-case login succeeds, cross-case duplicate registration
-   returns 409.
-4. Run the full test suite.
-5. Independent verification.
-6. Update `.claude/progress.md`.
-7. Commit, push, and open a PR.
+1. Edit `backend/app/schemas/auth.py` — add `normalize_email` validator to
+   `RegisterRequest` and `LoginRequest`.
+2. Add three tests to `backend/tests/test_auth.py`:
+   - `test_email_case_insensitive_login`
+   - `test_email_case_duplicate_rejected`
+   - `test_email_stored_lowercase`
 
-## Acceptance criteria
+## Acceptance Criteria
 
-- Registering `User@Example.com` then logging in as `user@example.com` returns 200.
-- Registering `user@example.com` after `User@Example.com` returns 409.
+- Register `User@Example.com` → login `user@example.com` → 200.
+- Register `User@Example.com` → register `user@example.com` → 409.
+- `/api/auth/me` returns email in lowercase regardless of registration case.
 - Full test suite passes.
