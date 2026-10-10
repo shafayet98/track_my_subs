@@ -52,3 +52,31 @@ async def test_me_requires_valid_token(client):
     assert (await client.get("/api/auth/me")).status_code == 401
     bad = await client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})
     assert bad.status_code == 401
+
+
+async def test_email_case_insensitive_login(client, make_user):
+    """Register with mixed-case email; login with lowercase succeeds."""
+    await make_user("User@Example.com", password="password123")
+    r = await client.post(
+        "/api/auth/login", json={"email": "user@example.com", "password": "password123"}
+    )
+    assert r.status_code == 200
+    assert "access_token" in r.json()
+
+
+async def test_email_case_duplicate_rejected(client, make_user):
+    """Registering the same email in a different case returns 409."""
+    await make_user("User@Example.com")
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "user@example.com", "password": "password123"},
+    )
+    assert r.status_code == 409
+
+
+async def test_email_stored_lowercase(client, make_user):
+    """Email is normalized to lowercase on registration and returned lowercase from /me."""
+    user = await make_user("Mixed@Example.COM", name="Test")
+    r = await client.get("/api/auth/me", headers=user["headers"])
+    assert r.status_code == 200
+    assert r.json()["email"] == "mixed@example.com"
