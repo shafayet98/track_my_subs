@@ -1,6 +1,10 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+def _lower_email(v: object) -> object:
+    return v.lower() if isinstance(v, str) else v
 
 
 class RegisterRequest(BaseModel):
@@ -8,10 +12,20 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     name: str | None = Field(default=None, max_length=200)
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        return _lower_email(v)
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, v: object) -> object:
+        return _lower_email(v)
 
 
 class TokenResponse(BaseModel):
