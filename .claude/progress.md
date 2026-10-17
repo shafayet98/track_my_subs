@@ -29,6 +29,8 @@ differing only by email case and locking users out when they logged in with a di
 case than they registered with.
 **Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`,
 `docs/plans/Email_case_normalization.md`.
+**Verified:** `uv run pytest` → 74 passed (3 new). `ruff check` + `ruff format --check`
+clean. Independently verified by a sub-agent.
 **Follow-ups:** A production deployment against an existing DB with mixed-case rows would
 need `UPDATE users SET email = LOWER(email)` before this deploy.
 
