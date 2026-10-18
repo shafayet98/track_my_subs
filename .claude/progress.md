@@ -23,11 +23,16 @@ The format for each entry:
 (`RegisterRequest` and `LoginRequest` in `backend/app/schemas/auth.py`) using a
 `field_validator(mode="after")`. Fixes issue #34: registering `User@Example.com`
 then `user@example.com` now correctly returns 409, and logging in with different
-case than used at registration now succeeds. Added two tests:
-`test_login_case_insensitive` and `test_register_duplicate_different_case`.
+case than used at registration now succeeds. Added three tests:
+`test_login_case_insensitive`, `test_register_duplicate_different_case`, and
+`test_login_mixed_case_for_lowercase_account`. Added Alembic migration
+`0003_normalize_email_case` to lowercase any existing email rows on deploy.
 **Why:** Security + correctness fix for issue #34 (effort:low, priority:high).
-**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`, `docs/plans/Email_case_insensitive_auth.md`.
-**Follow-ups:** Existing users with mixed-case emails in the DB are not migrated; acceptable for current dev stage.
+**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`,
+`backend/alembic/versions/0003_normalize_email_case.py`,
+`docs/plans/Email_case_normalization.md`.
+**Follow-ups:** A DB-level safeguard (functional index on `lower(email)`) would
+add defence-in-depth against paths that bypass the schema validators.
 
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
