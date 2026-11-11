@@ -91,3 +91,17 @@ async def test_register_duplicate_different_case_conflicts(client):
         json={"email": "dup@case.com", "password": "password123"},
     )
     assert r2.status_code == 409
+
+
+async def test_login_with_uppercase_after_lowercase_register(client):
+    r = await client.post(
+        "/api/auth/register",
+        json={"email": "lower@example.com", "password": "password123"},
+    )
+    assert r.status_code == 201
+    ok = await client.post(
+        "/api/auth/login",
+        json={"email": "LOWER@EXAMPLE.COM", "password": "password123"},
+    )
+    assert ok.status_code == 200
+    assert "access_token" in ok.json()
