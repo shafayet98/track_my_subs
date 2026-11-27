@@ -17,22 +17,22 @@ The format for each entry:
 
 ---
 
-## 2026-09-26 — Fix case-sensitive email handling on register/login (#34) (claude/email-case-normalization)
+## 2026-11-27 — Normalize email to lowercase on register/login (claude/email-case-normalization, #34)
 
-**What:** Added a `field_validator("email", mode="after")` on both `RegisterRequest` and
-`LoginRequest` in `backend/app/schemas/auth.py` that lowercases the email before it
-reaches the router. Stored emails are now always lowercase, so login always matches the
-stored value regardless of the case used at registration, and registering the same email
-in a different case is correctly rejected with 409.
-**Why:** Fixes issue #34 — authentication was case-sensitive, allowing duplicate accounts
-differing only by email case and locking users out when they logged in with a different
-case than they registered with.
-**Touches:** `backend/app/schemas/auth.py`, `backend/tests/test_auth.py`,
-`docs/plans/Email_case_normalization.md`.
-**Verified:** `uv run pytest` → 74 passed (3 new). `ruff check` + `ruff format --check`
-clean. Independently verified by a sub-agent.
-**Follow-ups:** A production deployment against an existing DB with mixed-case rows would
-need `UPDATE users SET email = LOWER(email)` before this deploy.
+**What:** Fixed case-sensitive email handling. Added a Pydantic v2 `field_validator`
+(`mode="before"`) on both `RegisterRequest` and `LoginRequest` in
+`backend/app/schemas/auth.py` that lowercases the email before it is stored or
+compared. Added Alembic migration `0003_lowercase_emails` to run
+`UPDATE users SET email = LOWER(email)` so existing rows are normalised to match.
+Two new tests cover the issue: register mixed-case → login lowercase succeeds (200),
+and register mixed-case → register same email lowercase → 409. Full suite 72 passed.
+**Why:** Closes issue #34 — `User@Example.com` and `user@example.com` were treated
+as different accounts; two accounts could be created for the same address, and
+login could fail when the case didn't match exactly.
+**Touches:** `backend/app/schemas/auth.py`,
+`backend/alembic/versions/0003_lowercase_emails.py`,
+`backend/tests/test_auth.py`, `docs/plans/Email_case_normalization.md`.
+**Follow-ups:** None — scope was contained to the auth boundary.
 
 ---
 
