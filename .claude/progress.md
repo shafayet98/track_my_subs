@@ -17,6 +17,25 @@ The format for each entry:
 
 ---
 
+## 2026-11-27 — Normalize email to lowercase on register/login (claude/email-case-normalization, #34)
+
+**What:** Fixed case-sensitive email handling. Added a Pydantic v2 `field_validator`
+(`mode="before"`) on both `RegisterRequest` and `LoginRequest` in
+`backend/app/schemas/auth.py` that lowercases the email before it is stored or
+compared. Added Alembic migration `0003_lowercase_emails` to run
+`UPDATE users SET email = LOWER(email)` so existing rows are normalised to match.
+Two new tests cover the issue: register mixed-case → login lowercase succeeds (200),
+and register mixed-case → register same email lowercase → 409. Full suite 72 passed.
+**Why:** Closes issue #34 — `User@Example.com` and `user@example.com` were treated
+as different accounts; two accounts could be created for the same address, and
+login could fail when the case didn't match exactly.
+**Touches:** `backend/app/schemas/auth.py`,
+`backend/alembic/versions/0003_lowercase_emails.py`,
+`backend/tests/test_auth.py`, `docs/plans/Email_case_normalization.md`.
+**Follow-ups:** None — scope was contained to the auth boundary.
+
+---
+
 ## 2026-06-24 — Docs: local-app email access options (docs/local-app-email-access)
 
 **What:** Added `docs/local-app-email-access.md` capturing the design discussion
