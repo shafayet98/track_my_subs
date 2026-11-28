@@ -7,8 +7,9 @@ Create Date: 2026-11-28
 
 from collections.abc import Sequence
 
-from alembic import op
 from sqlalchemy import text
+
+from alembic import op
 
 revision: str = "0003_lowercase_emails"
 down_revision: str = "0002_renewal_trial_alerts"
