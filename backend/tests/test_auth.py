@@ -54,31 +54,48 @@ async def test_me_requires_valid_token(client):
     assert bad.status_code == 401
 
 
-async def test_login_case_insensitive(client, make_user):
-    """Register with mixed-case email; login with lowercase should succeed."""
-    await make_user("User@Example.com", password="password123")
+# --- Email case-insensitivity tests (issue #34) ---
+
+
+async def test_register_mixed_case_login_lowercase(client):
     r = await client.post(
+        "/api/auth/register", json={"email": "User@Example.com", "password": "password123"}
+    )
+    assert r.status_code == 201
+    ok = await client.post(
         "/api/auth/login", json={"email": "user@example.com", "password": "password123"}
     )
-    assert r.status_code == 200
-    assert "access_token" in r.json()
+    assert ok.status_code == 200
+    assert "access_token" in ok.json()
 
 
-async def test_register_duplicate_different_case(client, make_user):
-    """Registering same email with different case should return 409."""
-    await make_user("User@Example.com")
+async def test_register_duplicate_different_case_conflicts(client):
+    r1 = await client.post(
+        "/api/auth/register", json={"email": "User@Example.com", "password": "password123"}
+    )
+    assert r1.status_code == 201
+    r2 = await client.post(
+        "/api/auth/register", json={"email": "user@example.com", "password": "password123"}
+    )
+    assert r2.status_code == 409
+
+
+async def test_login_uppercase_email_ok(client, make_user):
+    await make_user("lower@example.com", password="password123")
+    ok = await client.post(
+        "/api/auth/login", json={"email": "LOWER@EXAMPLE.COM", "password": "password123"}
+    )
+    assert ok.status_code == 200
+    assert "access_token" in ok.json()
+
+
+async def test_register_mixed_case_stored_lowercase(client):
     r = await client.post(
         "/api/auth/register",
-        json={"email": "user@example.com", "password": "password123"},
+        json={"email": "Mixed.Case@Example.COM", "password": "password123"},
     )
-    assert r.status_code == 409
-
-
-async def test_login_mixed_case_for_lowercase_account(client, make_user):
-    """Login with mixed-case email should succeed when account was registered lowercase."""
-    await make_user("user@example.com", password="password123")
-    r = await client.post(
-        "/api/auth/login", json={"email": "User@Example.com", "password": "password123"}
-    )
-    assert r.status_code == 200
-    assert "access_token" in r.json()
+    assert r.status_code == 201
+    token = r.json()["access_token"]
+    me = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "mixed.case@example.com"

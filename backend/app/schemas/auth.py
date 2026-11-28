@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -8,20 +9,20 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     name: str | None = Field(default=None, max_length=200)
 
-    @field_validator("email", mode="after")
+    @field_validator("email", mode="before")
     @classmethod
-    def normalize_email(cls, v: str) -> str:
-        return v.lower()
+    def normalise_email(cls, v: Any) -> Any:
+        return v.lower() if isinstance(v, str) else v
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-    @field_validator("email", mode="after")
+    @field_validator("email", mode="before")
     @classmethod
-    def normalize_email(cls, v: str) -> str:
-        return v.lower()
+    def normalise_email(cls, v: Any) -> Any:
+        return v.lower() if isinstance(v, str) else v
 
 
 class TokenResponse(BaseModel):
