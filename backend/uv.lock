@@ -1492,7 +1492,7 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.36" },
     { name = "google-auth-oauthlib", specifier = ">=1.2" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "moto", marker = "extra == 'dev'", specifier = ">=5.2" },
+    { name = "moto", extras = ["ses"], marker = "extra == 'dev'", specifier = ">=5.2" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
